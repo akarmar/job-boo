@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Union
 
+import click
 import fitz  # pymupdf
 
 from job_boo.ai.base import AIProvider
@@ -31,11 +33,22 @@ def parse_resume(
     ai: Union[AIProvider, FallbackProvider],
 ) -> Resume:
     """Parse a PDF resume and extract structured data using AI (or fallback)."""
+    if not pdf_path or str(pdf_path).strip() in ("", "."):
+        raise click.ClickException(
+            "No resume_path configured. Run 'job-boo init' to set it up."
+        )
+
     raw_text = extract_text_from_pdf(pdf_path)
     if not raw_text.strip():
         raise ValueError(f"No text extracted from {pdf_path}. Is it a scanned image?")
 
-    resume = ai.extract_skills(raw_text)
+    try:
+        resume = ai.extract_skills(raw_text)
+    except (json.JSONDecodeError, Exception):
+        # Fallback to keyword extraction if AI response is malformed
+        fallback = FallbackProvider()
+        resume = fallback.extract_skills(raw_text)
+
     resume.source_path = str(pdf_path)
     resume.raw_text = raw_text
     return resume

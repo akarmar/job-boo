@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import httpx
 
 from job_boo.config import Config
@@ -28,12 +30,15 @@ def search_remotive(config: Config) -> list[Job]:
     params: dict[str, str] = {}
 
     title_lower = config.job_title.lower()
+    matched_category = False
     for keyword, category in REMOTIVE_CATEGORIES.items():
         if keyword in title_lower:
             params["category"] = category
+            matched_category = True
             break
 
-    if config.job_title:
+    # Only use search param if no category matched — combining both returns 0
+    if config.job_title and not matched_category:
         params["search"] = config.job_title
 
     resp = httpx.get("https://remotive.com/api/remote-jobs", params=params, timeout=30)
@@ -42,8 +47,6 @@ def search_remotive(config: Config) -> list[Job]:
 
     jobs: list[Job] = []
     for item in data.get("jobs", []):
-        import re
-
         description = re.sub(r"<[^>]+>", " ", item.get("description", ""))
         description = re.sub(r"\s+", " ", description).strip()
 

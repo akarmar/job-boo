@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import httpx
 
 from job_boo.config import Config
@@ -52,8 +54,6 @@ def search_themuse(config: Config) -> list[Job]:
 
         contents = item.get("contents", "")
         # Strip HTML tags for plain text description
-        import re
-
         description = re.sub(r"<[^>]+>", " ", contents)
         description = re.sub(r"\s+", " ", description).strip()
 

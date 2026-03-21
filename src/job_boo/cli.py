@@ -548,7 +548,6 @@ def _update_config_section(section: str, values: dict) -> None:
 @main.command()
 @click.option("--url", help="Score a specific job listing URL")
 @click.option("--threshold", type=int, help="Override match threshold")
-@click.option("--limit", type=int, default=50, help="Max jobs to return per source")
 @click.option(
     "--profile", type=str, default=None, help="Use a named profile from config"
 )
@@ -558,7 +557,6 @@ def _update_config_section(section: str, values: dict) -> None:
 def search(
     url: str | None,
     threshold: int | None,
-    limit: int,
     profile: str | None,
     days: int | None,
 ) -> None:
@@ -600,6 +598,7 @@ def search(
 
     if not jobs:
         console.print("[red]No jobs found. Check your config and API keys.[/red]")
+        db.close()
         return
 
     # Save raw jobs to DB
@@ -770,6 +769,7 @@ def run_all(
 
     if not jobs:
         console.print("[red]No jobs found.[/red]")
+        db.close()
         return
 
     # Step 3: Score
@@ -791,6 +791,7 @@ def run_all(
         console.print(
             "[yellow]No jobs above threshold. Try lowering match_threshold.[/yellow]"
         )
+        db.close()
         return
 
     # Step 4: Tailor top matches

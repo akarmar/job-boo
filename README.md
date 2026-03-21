@@ -69,6 +69,35 @@ Job Boo automates the painful parts of job hunting:
 - **Reset** — Clean slate with `--jobs`, `--config`, `--output`, or `--everything`
 - **Docker demo** — Try without installing anything
 
+## System Requirements
+
+### Minimum
+| Requirement | Minimum                                              |
+| ----------- | ---------------------------------------------------- |
+| Python      | 3.11+                                                |
+| OS          | macOS 12+, Ubuntu 20.04+, Windows 10+ (WSL2 recommended) |
+| RAM         | 256 MB (CLI only), 512 MB (with AI scoring)          |
+| CPU         | Any x86_64 or ARM64                                  |
+| Disk        | 50 MB (install) + ~1 MB per 1000 tracked jobs        |
+| Network     | Required for job search and AI scoring               |
+
+### Docker
+| Requirement    | Minimum                          |
+| -------------- | -------------------------------- |
+| Docker         | 20.10+                           |
+| Docker Compose | 2.0+ (optional, for demo)        |
+| RAM            | 512 MB container limit           |
+| Disk           | ~500 MB (image with dependencies) |
+
+### Supported Platforms
+- **macOS**: Intel and Apple Silicon (M1/M2/M3/M4)
+- **Linux**: Ubuntu 20.04+, Debian 11+, Fedora 36+, RHEL 8+, Arch (any x86_64 or ARM64)
+- **Windows**: Windows 10+ via WSL2 (native Windows not tested)
+- **Docker**: Any platform with Docker 20.10+
+
+### Python Dependencies
+All dependencies are installed automatically via `pip install -e .`. No system-level packages required beyond Python 3.11+. PyMuPDF (PDF parsing) includes pre-built wheels for all major platforms.
+
 ## Quick Start
 
 ### Install
@@ -119,6 +148,32 @@ job-boo jobs --min-score 80   # Filter by score
 job-boo status                # Pipeline dashboard
 job-boo export --format csv   # Export for spreadsheets
 job-boo export --format json  # Export as JSON
+```
+
+## Installation
+
+### From source (recommended)
+```bash
+git clone https://github.com/akarmar/job-boo.git
+cd job-boo
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows WSL: source .venv/bin/activate
+pip install -e .
+job-boo --version  # Verify installation
+```
+
+### Docker (no Python required)
+```bash
+git clone https://github.com/akarmar/job-boo.git
+cd job-boo
+./demo/run.sh --demo        # Narrated demo (no API keys needed)
+./demo/run.sh --env ~/.job-boo.env  # Interactive with your keys
+```
+
+### Verify installation
+```bash
+job-boo --version   # Should print: job-boo, version 0.1.0
+job-boo doctor      # Diagnose configuration
 ```
 
 ## Configuration

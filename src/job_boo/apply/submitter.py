@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import webbrowser
+from datetime import datetime
 
 from rich.console import Console
 from rich.panel import Panel
@@ -69,7 +70,9 @@ def submit_application(
     )
 
     if app.db_id:
-        db.update_state(app.db_id, JobState.APPLIED, applied_at=str(time.time()))
+        db.update_state(
+            app.db_id, JobState.APPLIED, applied_at=datetime.now().isoformat()
+        )
 
     if delay > 0:
         time.sleep(delay)
