@@ -403,6 +403,39 @@ src/job_boo/
 - Batch apply enforces a minimum 10-second delay between applications to avoid anti-bot triggers
 - Free API tier limits: SerpAPI = 100/month, Adzuna = 1,000/month
 
+### Token Cost Optimizations
+
+Job Boo minimizes AI API spend with these strategies:
+
+| Optimization                  | Savings       | How                                                    |
+| ----------------------------- | ------------- | ------------------------------------------------------ |
+| Two-pass scoring              | ~50% tokens   | Free keyword filter eliminates irrelevant jobs first   |
+| Description trimming          | ~30% tokens   | Prioritizes requirements section, caps at 3000 chars   |
+| Skills cap                    | ~10% tokens   | Sends top 30 skills instead of full list               |
+| Resume text cap               | ~15% tokens   | Caps raw resume at 8000 chars for tailoring            |
+| Word-boundary skill matching  | Better scores | Prevents false positives ("go" in "good"), fewer retries |
+
+Cost estimates are shown before AI scoring runs. Use `--threshold` to raise the bar and score fewer jobs.
+
+## Development
+
+### Run Tests
+
+```bash
+pip install -e ".[test]"
+pytest tests/                     # Run all 256 tests
+pytest tests/ --cov=job_boo      # With coverage report
+pytest tests/test_db.py -v       # Run a specific test file
+```
+
+### Code Quality
+
+```bash
+qlty check src/                   # Lint
+qlty fmt src/                     # Format
+semgrep scan --config auto src/   # Security scan
+```
+
 ## License
 
 [MIT](LICENSE) — Use it, fork it, modify it, sell it. Just keep the copyright notice.
