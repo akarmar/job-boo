@@ -10,10 +10,11 @@ from rich.console import Console
 from job_boo.config import Config
 from job_boo.models import Job
 from job_boo.search.adzuna import search_adzuna
+from job_boo.search.jobspy_source import search_jobspy
 from job_boo.search.remotive import search_remotive
 from job_boo.search.serpapi import search_serpapi
 from job_boo.search.themuse import search_themuse
-from job_boo.search.url import parse_job_url
+from job_boo.search.url import parse_job_url  # noqa: F401 — re-exported for CLI
 
 console = Console()
 
@@ -24,14 +25,21 @@ def parse_posted_date(date_str: str) -> datetime | None:
         return None
 
     # Try ISO format variants
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S%z"):
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S%z",
+    ):
         try:
             return datetime.strptime(date_str.strip(), fmt)
         except ValueError:
             continue
 
     # Try relative date patterns like "3 days ago", "1 week ago", "2 months ago"
-    relative = re.match(r"(\d+)\s+(day|week|month|hour|minute)s?\s+ago", date_str.strip().lower())
+    relative = re.match(
+        r"(\d+)\s+(day|week|month|hour|minute)s?\s+ago", date_str.strip().lower()
+    )
     if relative:
         amount = int(relative.group(1))
         unit = relative.group(2)
@@ -99,13 +107,18 @@ def search_all_sources(config: Config, max_days: int | None = None) -> list[Job]
         sources.append(("SerpAPI (Google Jobs)", lambda: search_serpapi(config)))
     if config.sources.adzuna.enabled and config.sources.adzuna.resolve_key():
         sources.append(("Adzuna", lambda: search_adzuna(config)))
+    if config.sources.jobspy.enabled:
+        sites_label = ", ".join(config.sources.jobspy.sites)
+        sources.append((f"JobSpy ({sites_label})", lambda: search_jobspy(config)))
     if config.sources.themuse:
         sources.append(("The Muse", lambda: search_themuse(config)))
     if config.sources.remotive:
         sources.append(("Remotive", lambda: search_remotive(config)))
 
     if not sources:
-        console.print("[yellow]No job sources enabled or configured. Check your config.[/yellow]")
+        console.print(
+            "[yellow]No job sources enabled or configured. Check your config.[/yellow]"
+        )
         return []
 
     for name, search_fn in sources:
@@ -132,6 +145,8 @@ def search_all_sources(config: Config, max_days: int | None = None) -> list[Job]
         all_jobs = filter_by_recency(all_jobs, max_days)
         removed = before - len(all_jobs)
         if removed > 0:
-            console.print(f"  Recency filter ({max_days}d): removed [yellow]{removed}[/yellow] jobs")
+            console.print(
+                f"  Recency filter ({max_days}d): removed [yellow]{removed}[/yellow] jobs"
+            )
 
     return all_jobs

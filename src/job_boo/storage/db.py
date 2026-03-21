@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 
 from job_boo.config import DB_PATH
-from job_boo.models import Application, Job, JobState, MatchResult
+from job_boo.models import Job, JobState, MatchResult
 
 
 SCHEMA = """
@@ -58,6 +58,7 @@ class JobDB:
         self.db_path = db_path or DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(self.db_path))
+        os.chmod(self.db_path, 0o600)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
 

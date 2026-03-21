@@ -27,13 +27,16 @@ Job Boo automates the painful parts of job hunting:
 
 ### Core Pipeline
 
-- **Multi-source job search** — Adzuna, The Muse, Remotive (free, no keys needed), SerpAPI/Google Jobs (paid, optional)
+- **Multi-source job search** — Adzuna, The Muse, Remotive (free, no keys needed), JobSpy (LinkedIn/Indeed/Glassdoor), SerpAPI/Google Jobs (paid, optional)
 - **Paste any job URL** — Score a specific listing with `--url`
 - **Two-pass scoring** — Fast keyword pre-filter, then AI semantic analysis (saves ~50% on API costs)
 - **AI resume tailoring** — Rewrites your resume per job: reorders sections, mirrors keywords, adjusts summary
 - **Cover letter generation** — Personalized per job, under 300 words, professional tone
+- **Interview prep** — AI-generated questions, talking points, and company research per job
 - **Application tracking** — SQLite state machine: FOUND -> SCORED -> TAILORED -> APPLIED -> CLOSED
 - **Batch apply** — Open multiple application URLs with tailored materials ready
+- **Watch mode** — Scheduled searches with webhook notifications for new matches
+- **Analytics** — Conversion funnel, skill gap trends, daily application activity
 
 ### Smart Filters
 
@@ -41,7 +44,13 @@ Job Boo automates the painful parts of job hunting:
 - **Location matching** — Filter by remote/hybrid/onsite and specific cities
 - **Salary range** — Skip jobs below your minimum
 - **Configurable threshold** — Default 60% match score, adjustable per run with `--threshold`
-- **Company blacklist** — Skip companies you don't want to work for (coming soon)
+- **Company blacklist/whitelist** — Skip or target specific companies
+- **Recency filter** — Only show jobs posted within N days (`--days`)
+
+### Multi-Profile
+
+- **Multiple search profiles** — Different resumes, titles, and keywords per job target
+- Switch profiles with `--profile backend` or `--profile frontend`
 
 ### AI Providers
 
@@ -55,6 +64,7 @@ Job Boo automates the painful parts of job hunting:
 - **Interactive setup** — `job-boo init` wizard configures everything
 - **AI setup wizard** — `job-boo setup-ai` tests your API connection live
 - **Health check** — `job-boo doctor` diagnoses config, keys, resume, sources
+- **Job notes** — Add notes to tracked jobs for your own reference
 - **Export** — CSV or JSON export for spreadsheet tracking
 - **Reset** — Clean slate with `--jobs`, `--config`, `--output`, or `--everything`
 - **Docker demo** — Try without installing anything
@@ -166,13 +176,14 @@ All API keys can be set via env vars instead of config:
 
 ## Job Sources
 
-| Source    | Type   | Cost         | What it searches                 |
-| --------- | ------ | ------------ | -------------------------------- |
-| Adzuna    | API    | Free (1K/mo) | Aggregates Indeed, Monster, etc. |
-| The Muse  | API    | Free, no key | Curated tech/startup jobs        |
-| Remotive  | API    | Free, no key | Remote-only jobs                 |
-| SerpAPI   | API    | $50/mo       | Google Jobs (all sources)        |
-| URL paste | Direct | Free         | Any job listing URL              |
+| Source    | Type    | Cost         | What it searches                            |
+| --------- | ------- | ------------ | ------------------------------------------- |
+| JobSpy    | Scraper | Free         | LinkedIn, Indeed, Glassdoor, ZipRecruiter   |
+| Adzuna    | API     | Free (1K/mo) | Aggregates Indeed, Monster, etc.            |
+| The Muse  | API     | Free, no key | Curated tech/startup jobs                   |
+| Remotive  | API     | Free, no key | Remote-only jobs                            |
+| SerpAPI   | API     | $50/mo       | Google Jobs (all sources)                   |
+| URL paste | Direct  | Free         | Any job listing URL                         |
 
 ## How Scoring Works
 
@@ -237,19 +248,24 @@ job-boo setup-ai
 
 ## All Commands
 
-| Command             | Description                                       |
-| ------------------- | ------------------------------------------------- |
-| `job-boo init`      | Interactive configuration wizard                  |
-| `job-boo setup-ai`  | Configure and test AI provider                    |
-| `job-boo doctor`    | Diagnose configuration issues                     |
-| `job-boo search`    | Search and score jobs against your resume         |
-| `job-boo tailor ID` | Tailor resume + cover letter for a specific job   |
-| `job-boo apply ID`  | Open application URL with tailored materials      |
-| `job-boo all`       | Full pipeline: search -> score -> tailor -> apply |
-| `job-boo jobs`      | List tracked jobs with scores and state           |
-| `job-boo status`    | Pipeline dashboard with counts per state          |
-| `job-boo export`    | Export jobs to CSV or JSON                        |
-| `job-boo reset`     | Clear database, config, or output files           |
+| Command               | Description                                         |
+| --------------------- | --------------------------------------------------- |
+| `job-boo init`        | Interactive configuration wizard                    |
+| `job-boo setup-ai`    | Configure and test AI provider                      |
+| `job-boo doctor`      | Diagnose configuration issues                       |
+| `job-boo search`      | Search and score jobs against your resume           |
+| `job-boo show ID`     | View full job details, scores, and AI reasoning     |
+| `job-boo tailor ID`   | Tailor resume + cover letter for a specific job     |
+| `job-boo prep ID`     | Generate AI interview prep questions + talking pts  |
+| `job-boo apply ID`    | Open application URL with tailored materials        |
+| `job-boo all`         | Full pipeline: search -> score -> tailor -> apply   |
+| `job-boo jobs`        | List tracked jobs with scores and state             |
+| `job-boo note ID`     | Add or view notes for a tracked job                 |
+| `job-boo status`      | Pipeline dashboard with counts per state            |
+| `job-boo analytics`   | Conversion funnel, skill trends, daily activity     |
+| `job-boo watch`       | Scheduled search — find new jobs at an interval     |
+| `job-boo export`      | Export jobs to CSV or JSON                          |
+| `job-boo reset`       | Clear database, config, or output files             |
 
 ## Tech Stack
 
@@ -282,6 +298,7 @@ src/job_boo/
 ├── resume/
 │   └── parser.py       # PDF text extraction + AI skill parsing
 ├── search/
+│   ├── jobspy_source.py # JobSpy: LinkedIn, Indeed, Glassdoor, ZipRecruiter
 │   ├── serpapi.py       # Google Jobs via SerpAPI
 │   ├── adzuna.py        # Adzuna job search API
 │   ├── themuse.py       # The Muse API (free)
@@ -297,12 +314,31 @@ src/job_boo/
     └── db.py            # SQLite job tracking + state machine
 ```
 
-## Privacy
+## Privacy & Security
 
-- All data stored locally (`~/.job-boo/`)
+- All data stored locally (`~/.job-boo/`) with restricted file permissions (`0600`/`0700`)
 - No accounts, no cloud services, no telemetry
 - API calls go only to your configured AI provider and job source APIs
-- Your resume and API keys never leave your machine (except to APIs you explicitly configured)
+- Your resume text **is sent** to Claude/OpenAI APIs for scoring and tailoring (these providers may retain data up to 30 days per their API terms)
+- Use fallback mode (no AI key) if you don't want resume data leaving your machine
+- API keys can be stored via environment variables instead of config file for added security
+
+### Terms of Service Notices
+
+| Source                         | ToS Status      |
+| ------------------------------ | --------------- |
+| SerpAPI, Adzuna               | Compliant       |
+| The Muse, Remotive            | Gray area       |
+| JobSpy (LinkedIn/Indeed/etc.) | **Violates ToS** |
+
+**JobSpy scrapes LinkedIn, Indeed, Glassdoor, and ZipRecruiter**, which all prohibit automated access. Using JobSpy may result in IP blocks, account suspension, or legal action. It is disabled by default and requires explicit opt-in. **Use at your own risk.**
+
+### Rate Limiting & Costs
+
+- AI scoring costs ~$0.003/job (~$0.50-$1.50 per search of 50 jobs)
+- Watch mode consumes API quotas per cycle — intervals under 4 hours are warned
+- Batch apply enforces a minimum 10-second delay between applications to avoid anti-bot triggers
+- Free API tier limits: SerpAPI = 100/month, Adzuna = 1,000/month
 
 ## License
 

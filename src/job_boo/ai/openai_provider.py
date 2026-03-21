@@ -68,7 +68,9 @@ class OpenAIProvider:
         )
         return self._ask(TAILOR_RESUME_PROMPT, user_msg, max_tokens=8192)
 
-    def generate_cover_letter(self, resume: Resume, job: Job, match: MatchResult) -> str:
+    def generate_cover_letter(
+        self, resume: Resume, job: Job, match: MatchResult
+    ) -> str:
         user_msg = (
             f"RESUME SUMMARY: {resume.summary}\n"
             f"KEY SKILLS: {json.dumps(resume.skills[:15])}\n\n"

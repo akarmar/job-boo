@@ -2,11 +2,11 @@ resume_path: ~/Documents/resume.pdf
 
 # Job search criteria
 job_title: "Senior Software Engineer"
-keywords: []  # additional keywords to include in search
+keywords: [] # additional keywords to include in search
 
 location:
-  preference: remote  # remote | hybrid | onsite
-  city: ""            # required if hybrid or onsite
+  preference: remote # remote | hybrid | onsite
+  city: "" # required if hybrid or onsite
 
 needs_sponsorship: false
 
@@ -20,20 +20,25 @@ match_threshold: 60
 
 # AI provider for skill extraction, scoring, and resume tailoring
 ai:
-  provider: claude  # claude | openai
-  api_key: ""       # or set JOB_BOO_AI_KEY env var
-  model: ""         # optional model override (e.g. claude-sonnet-4-20250514, gpt-4o)
+  provider: claude # claude | openai
+  api_key: "" # or set JOB_BOO_AI_KEY env var
+  model: "" # optional model override (e.g. claude-sonnet-4-20250514, gpt-4o)
 
 # Job sources — disable any you don't have keys for
 sources:
   serpapi:
     enabled: false
-    api_key: ""     # or set SERPAPI_KEY env var
+    api_key: "" # or set SERPAPI_KEY env var
   adzuna:
     enabled: true
-    app_id: ""      # or set ADZUNA_APP_ID env var
-    api_key: ""     # or set ADZUNA_API_KEY env var
-    country: us     # two-letter country code
+    app_id: "" # or set ADZUNA_APP_ID env var
+    api_key: "" # or set ADZUNA_API_KEY env var
+    country: us # two-letter country code
+  jobspy:
+    enabled: false # Scrapes LinkedIn, Indeed, Glassdoor, ZipRecruiter
+    sites: ["indeed", "linkedin", "glassdoor"]
+    proxy: "" # optional: "http://user:pass@host:port"
+    results_per_site: 25
   themuse:
     enabled: true
   remotive:
@@ -41,8 +46,8 @@ sources:
 
 # Company filters
 companies:
-  blacklist: []   # Skip these companies, e.g. ["Palantir", "Meta"]
-  whitelist: []   # If non-empty, ONLY search these companies
+  blacklist: [] # Skip these companies, e.g. ["Palantir", "Meta"]
+  whitelist: [] # If non-empty, ONLY search these companies
 
 # Named profiles for different job searches
 profiles:
@@ -60,6 +65,6 @@ output_dir: ~/.job-boo/output/
 
 # Auto-apply settings
 apply:
-  confirm_before_submit: true  # always ask before submitting
+  confirm_before_submit: true # always ask before submitting
   include_cover_letter: true
-  delay_between_applications: 5  # seconds
+  delay_between_applications: 5 # seconds

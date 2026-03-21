@@ -36,7 +36,9 @@ def search_themuse(config: Config) -> list[Job]:
     if config.location.city:
         params["location"] = config.location.city
 
-    resp = httpx.get("https://www.themuse.com/api/public/jobs", params=params, timeout=30)
+    resp = httpx.get(
+        "https://www.themuse.com/api/public/jobs", params=params, timeout=30
+    )
     resp.raise_for_status()
     data = resp.json()
 
@@ -44,25 +46,30 @@ def search_themuse(config: Config) -> list[Job]:
     for item in data.get("results", []):
         locations = [loc.get("name", "") for loc in item.get("locations", [])]
         location_str = ", ".join(locations)
-        is_remote = any("remote" in loc.lower() or "flexible" in loc.lower() for loc in locations)
+        is_remote = any(
+            "remote" in loc.lower() or "flexible" in loc.lower() for loc in locations
+        )
 
         contents = item.get("contents", "")
         # Strip HTML tags for plain text description
         import re
+
         description = re.sub(r"<[^>]+>", " ", contents)
         description = re.sub(r"\s+", " ", description).strip()
 
-        jobs.append(Job(
-            title=item.get("name", ""),
-            company=item.get("company", {}).get("name", ""),
-            location=location_str,
-            description=description,
-            url=item.get("refs", {}).get("landing_page", ""),
-            source="themuse",
-            remote=is_remote,
-            posted_date=item.get("publication_date", ""),
-            job_id=str(item.get("id", "")),
-            raw_data=item,
-        ))
+        jobs.append(
+            Job(
+                title=item.get("name", ""),
+                company=item.get("company", {}).get("name", ""),
+                location=location_str,
+                description=description,
+                url=item.get("refs", {}).get("landing_page", ""),
+                source="themuse",
+                remote=is_remote,
+                posted_date=item.get("publication_date", ""),
+                job_id=str(item.get("id", "")),
+                raw_data=item,
+            )
+        )
 
     return jobs

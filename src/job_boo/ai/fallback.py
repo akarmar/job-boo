@@ -208,14 +208,14 @@ class FallbackProvider:
             matched_skills=[s.title() for s in matched],
             missing_skills=missing[:10],
             reasoning=f"Keyword match: {len(matched)}/{len(resume_skills)} skills found in job description. "
-            f"(Fallback mode — no AI scoring. Run 'job-boo setup-ai' for semantic analysis.)",
+            "(Fallback mode — no AI scoring. Run 'job-boo setup-ai' for semantic analysis.)",
         )
 
     def tailor_resume(self, resume: Resume, job: Job, match: MatchResult) -> str:
         """Cannot tailor without AI — returns original with a note."""
         header = (
-            f"[NOTE: This is your original resume. AI tailoring is unavailable.\n"
-            f"Run 'job-boo setup-ai' to enable AI-powered resume customization.]\n"
+            "[NOTE: This is your original resume. AI tailoring is unavailable.\n"
+            "Run 'job-boo setup-ai' to enable AI-powered resume customization.]\n"
             f"\nTarget: {job.title} at {job.company}\n"
             f"Matched skills: {', '.join(match.matched_skills)}\n"
             f"Missing skills: {', '.join(match.missing_skills)}\n"
@@ -228,43 +228,45 @@ class FallbackProvider:
     ) -> str:
         """Cannot generate without AI — returns a template."""
         return (
-            f"Dear Hiring Manager,\n\n"
+            "Dear Hiring Manager,\n\n"
             f"I am writing to express my interest in the {job.title} position at {job.company}.\n\n"
             f"With {resume.experience_years} years of experience and skills in "
             f"{', '.join(match.matched_skills[:5])}, I believe I would be a strong fit for this role.\n\n"
-            f"[NOTE: This is a basic template. Run 'job-boo setup-ai' to generate "
-            f"AI-powered personalized cover letters.]\n\n"
-            f"Thank you for your consideration.\n\n"
-            f"Sincerely,\n[Your Name]"
+            "[NOTE: This is a basic template. Run 'job-boo setup-ai' to generate "
+            "AI-powered personalized cover letters.]\n\n"
+            "Thank you for your consideration.\n\n"
+            "Sincerely,\n[Your Name]"
         )
 
     def prep_interview(self, resume: Resume, job: Job) -> str:
         """Return a generic interview prep template without AI."""
-        skills_str = ", ".join(resume.skills[:10]) if resume.skills else "your key skills"
+        skills_str = (
+            ", ".join(resume.skills[:10]) if resume.skills else "your key skills"
+        )
         return (
             f"# Interview Preparation: {job.title} at {job.company}\n\n"
-            f"[NOTE: This is a generic template. Run 'job-boo setup-ai' to generate "
-            f"AI-powered personalized interview prep.]\n\n"
-            f"## Technical Interview Questions\n\n"
+            "[NOTE: This is a generic template. Run 'job-boo setup-ai' to generate "
+            "AI-powered personalized interview prep.]\n\n"
+            "## Technical Interview Questions\n\n"
             f"1. Describe your experience with {skills_str}.\n"
-            f"2. Walk me through a challenging technical project you led.\n"
-            f"3. How do you approach debugging a production issue?\n"
-            f"4. Explain a system you designed and the trade-offs you made.\n"
-            f"5. How do you stay current with new technologies?\n\n"
-            f"## Behavioral Interview Questions\n\n"
-            f"1. Tell me about a time you had to meet a tight deadline.\n"
-            f"2. Describe a situation where you disagreed with a teammate.\n"
-            f"3. How do you prioritize competing tasks?\n"
-            f"4. Tell me about a failure and what you learned from it.\n"
-            f"5. Describe your ideal work environment.\n\n"
-            f"## Talking Points\n\n"
+            "2. Walk me through a challenging technical project you led.\n"
+            "3. How do you approach debugging a production issue?\n"
+            "4. Explain a system you designed and the trade-offs you made.\n"
+            "5. How do you stay current with new technologies?\n\n"
+            "## Behavioral Interview Questions\n\n"
+            "1. Tell me about a time you had to meet a tight deadline.\n"
+            "2. Describe a situation where you disagreed with a teammate.\n"
+            "3. How do you prioritize competing tasks?\n"
+            "4. Tell me about a failure and what you learned from it.\n"
+            "5. Describe your ideal work environment.\n\n"
+            "## Talking Points\n\n"
             f"- Highlight your {resume.experience_years} years of experience\n"
             f"- Emphasize skills: {skills_str}\n"
-            f"- Prepare specific examples with metrics (STAR format)\n\n"
-            f"## Company Research Suggestions\n\n"
+            "- Prepare specific examples with metrics (STAR format)\n\n"
+            "## Company Research Suggestions\n\n"
             f"- Visit {job.company}'s website and read their About/Mission page\n"
-            f"- Check recent news and press releases\n"
-            f"- Look for engineering blog posts or tech talks\n"
-            f"- Review their Glassdoor/Blind reviews\n"
-            f"- Research their products, competitors, and market position\n"
+            "- Check recent news and press releases\n"
+            "- Look for engineering blog posts or tech talks\n"
+            "- Review their Glassdoor/Blind reviews\n"
+            "- Research their products, competitors, and market position\n"
         )

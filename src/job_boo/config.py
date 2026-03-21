@@ -60,9 +60,20 @@ class AdzunaConfig:
 
 
 @dataclass
+class JobSpyConfig:
+    enabled: bool = False
+    sites: list[str] = field(
+        default_factory=lambda: ["indeed", "linkedin", "glassdoor"]
+    )
+    proxy: str = ""  # optional proxy URL
+    results_per_site: int = 25
+
+
+@dataclass
 class SourcesConfig:
     serpapi: SerpApiConfig = field(default_factory=SerpApiConfig)
     adzuna: AdzunaConfig = field(default_factory=AdzunaConfig)
+    jobspy: JobSpyConfig = field(default_factory=JobSpyConfig)
     themuse: bool = True
     remotive: bool = True
 
@@ -131,6 +142,7 @@ def load_config(path: Path | None = None) -> Config:
     sources_data = data.get("sources", {})
     serpapi_data = sources_data.get("serpapi", {})
     adzuna_data = sources_data.get("adzuna", {})
+    jobspy_data = sources_data.get("jobspy", {})
     loc_data = data.get("location", {})
     salary_data = data.get("salary", {})
     ai_data = data.get("ai", {})
@@ -169,8 +181,18 @@ def load_config(path: Path | None = None) -> Config:
                 api_key=adzuna_data.get("api_key", ""),
                 country=adzuna_data.get("country", "us"),
             ),
-            themuse=sources_data.get("themuse", {}).get("enabled", True) if isinstance(sources_data.get("themuse"), dict) else sources_data.get("themuse", True),
-            remotive=sources_data.get("remotive", {}).get("enabled", True) if isinstance(sources_data.get("remotive"), dict) else sources_data.get("remotive", True),
+            jobspy=JobSpyConfig(
+                enabled=jobspy_data.get("enabled", False),
+                sites=jobspy_data.get("sites", ["indeed", "linkedin", "glassdoor"]),
+                proxy=jobspy_data.get("proxy", ""),
+                results_per_site=jobspy_data.get("results_per_site", 25),
+            ),
+            themuse=sources_data.get("themuse", {}).get("enabled", True)
+            if isinstance(sources_data.get("themuse"), dict)
+            else sources_data.get("themuse", True),
+            remotive=sources_data.get("remotive", {}).get("enabled", True)
+            if isinstance(sources_data.get("remotive"), dict)
+            else sources_data.get("remotive", True),
         ),
         output_dir=data.get("output_dir", str(OUTPUT_DIR)),
         apply=ApplyConfig(
@@ -206,4 +228,7 @@ def apply_profile(config: Config, profile_name: str) -> Config:
 def ensure_dirs(config: Config) -> None:
     """Create necessary directories."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(
+        CONFIG_DIR, 0o700
+    )  # nosemgrep: insecure-file-permissions — owner-only dir for secrets
     Path(config.output_dir).expanduser().mkdir(parents=True, exist_ok=True)

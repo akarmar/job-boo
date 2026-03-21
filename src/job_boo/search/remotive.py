@@ -43,6 +43,7 @@ def search_remotive(config: Config) -> list[Job]:
     jobs: list[Job] = []
     for item in data.get("jobs", []):
         import re
+
         description = re.sub(r"<[^>]+>", " ", item.get("description", ""))
         description = re.sub(r"\s+", " ", description).strip()
 
@@ -53,18 +54,20 @@ def search_remotive(config: Config) -> list[Job]:
             if nums:
                 salary_min = int(nums[0].replace(",", ""))
 
-        jobs.append(Job(
-            title=item.get("title", ""),
-            company=item.get("company_name", ""),
-            location=item.get("candidate_required_location", "Anywhere"),
-            description=description[:5000],
-            url=item.get("url", ""),
-            source="remotive",
-            remote=True,
-            salary_min=salary_min,
-            posted_date=item.get("publication_date", ""),
-            job_id=str(item.get("id", "")),
-            raw_data=item,
-        ))
+        jobs.append(
+            Job(
+                title=item.get("title", ""),
+                company=item.get("company_name", ""),
+                location=item.get("candidate_required_location", "Anywhere"),
+                description=description[:5000],
+                url=item.get("url", ""),
+                source="remotive",
+                remote=True,
+                salary_min=salary_min,
+                posted_date=item.get("publication_date", ""),
+                job_id=str(item.get("id", "")),
+                raw_data=item,
+            )
+        )
 
     return jobs

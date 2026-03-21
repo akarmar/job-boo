@@ -28,16 +28,26 @@ def submit_application(
     """
     job = app.job
 
-    console.print(Panel(
-        f"[bold]{job.title}[/bold] at [cyan]{job.company}[/cyan]\n"
-        f"Location: {job.location}\n"
-        f"Score: {app.match.final_score:.0f}%\n"
-        f"Matched: {', '.join(app.match.matched_skills[:5])}\n"
-        f"URL: {job.url}\n"
-        + (f"\nTailored resume: {app.tailored_resume_path}" if app.tailored_resume_path else "")
-        + (f"\nCover letter: {app.cover_letter_path}" if app.cover_letter_path else ""),
-        title="Application",
-    ))
+    console.print(
+        Panel(
+            f"[bold]{job.title}[/bold] at [cyan]{job.company}[/cyan]\n"
+            f"Location: {job.location}\n"
+            f"Score: {app.match.final_score:.0f}%\n"
+            f"Matched: {', '.join(app.match.matched_skills[:5])}\n"
+            f"URL: {job.url}\n"
+            + (
+                f"\nTailored resume: {app.tailored_resume_path}"
+                if app.tailored_resume_path
+                else ""
+            )
+            + (
+                f"\nCover letter: {app.cover_letter_path}"
+                if app.cover_letter_path
+                else ""
+            ),
+            title="Application",
+        )
+    )
 
     if not job.url:
         console.print("[red]  No application URL available. Skipping.[/red]")
@@ -53,8 +63,10 @@ def submit_application(
 
     # Open the application URL
     webbrowser.open(job.url)
-    console.print(f"  [green]Opened in browser.[/green]")
-    console.print("  Apply using the tailored resume and cover letter saved in your output directory.")
+    console.print("  [green]Opened in browser.[/green]")
+    console.print(
+        "  Apply using the tailored resume and cover letter saved in your output directory."
+    )
 
     if app.db_id:
         db.update_state(app.db_id, JobState.APPLIED, applied_at=str(time.time()))
@@ -72,8 +84,14 @@ def batch_apply(
     delay: int = 5,
 ) -> int:
     """Apply to multiple jobs. Returns count of applications submitted."""
+    delay = max(delay, 10)  # Minimum 10 seconds to avoid anti-bot triggers
     applied = 0
     total = len(matches)
+
+    console.print(
+        "[yellow]WARNING: Batch applying rapidly may trigger anti-bot defenses on job sites, "
+        "potentially blocking your IP or flagging your applications.[/yellow]\n"
+    )
 
     for i, match in enumerate(matches, 1):
         console.print(f"\n[bold]--- Application {i}/{total} ---[/bold]")

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 import httpx
 from bs4 import BeautifulSoup
 
@@ -24,7 +22,12 @@ def parse_job_url(url: str) -> Job:
 
     # Extract title from common patterns
     title = ""
-    for selector in ["h1", '[data-testid="jobTitle"]', ".job-title", ".posting-headline h2"]:
+    for selector in [
+        "h1",
+        '[data-testid="jobTitle"]',
+        ".job-title",
+        ".posting-headline h2",
+    ]:
         el = soup.select_one(selector)
         if el:
             title = el.get_text(strip=True)
@@ -34,7 +37,11 @@ def parse_job_url(url: str) -> Job:
 
     # Extract company
     company = ""
-    for selector in [".company-name", '[data-testid="companyName"]', ".posting-categories .sort-by-team"]:
+    for selector in [
+        ".company-name",
+        '[data-testid="companyName"]',
+        ".posting-categories .sort-by-team",
+    ]:
         el = soup.select_one(selector)
         if el:
             company = el.get_text(strip=True)
@@ -42,7 +49,13 @@ def parse_job_url(url: str) -> Job:
 
     # Extract description
     description = ""
-    for selector in [".job-description", ".posting-description", '[data-testid="jobDescription"]', "article", ".content"]:
+    for selector in [
+        ".job-description",
+        ".posting-description",
+        '[data-testid="jobDescription"]',
+        "article",
+        ".content",
+    ]:
         el = soup.select_one(selector)
         if el:
             description = el.get_text(separator=" ", strip=True)
@@ -55,7 +68,11 @@ def parse_job_url(url: str) -> Job:
 
     # Extract location
     location = ""
-    for selector in [".location", '[data-testid="location"]', ".posting-categories .sort-by-location"]:
+    for selector in [
+        ".location",
+        '[data-testid="location"]',
+        ".posting-categories .sort-by-location",
+    ]:
         el = soup.select_one(selector)
         if el:
             location = el.get_text(strip=True)

@@ -44,19 +44,22 @@ def search_adzuna(config: Config) -> list[Job]:
     jobs: list[Job] = []
     for item in data.get("results", []):
         location_name = item.get("location", {}).get("display_name", "")
-        jobs.append(Job(
-            title=item.get("title", ""),
-            company=item.get("company", {}).get("display_name", ""),
-            location=location_name,
-            description=item.get("description", ""),
-            url=item.get("redirect_url", ""),
-            source="adzuna",
-            salary_min=int(item.get("salary_min", 0) or 0),
-            salary_max=int(item.get("salary_max", 0) or 0),
-            remote="remote" in location_name.lower() or "remote" in item.get("title", "").lower(),
-            posted_date=item.get("created", ""),
-            job_id=item.get("id", ""),
-            raw_data=item,
-        ))
+        jobs.append(
+            Job(
+                title=item.get("title", ""),
+                company=item.get("company", {}).get("display_name", ""),
+                location=location_name,
+                description=item.get("description", ""),
+                url=item.get("redirect_url", ""),
+                source="adzuna",
+                salary_min=int(item.get("salary_min", 0) or 0),
+                salary_max=int(item.get("salary_max", 0) or 0),
+                remote="remote" in location_name.lower()
+                or "remote" in item.get("title", "").lower(),
+                posted_date=item.get("created", ""),
+                job_id=item.get("id", ""),
+                raw_data=item,
+            )
+        )
 
     return jobs

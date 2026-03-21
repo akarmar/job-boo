@@ -20,7 +20,9 @@ class AIProvider(Protocol):
         """Generate a tailored resume text for a specific job."""
         ...
 
-    def generate_cover_letter(self, resume: Resume, job: Job, match: MatchResult) -> str:
+    def generate_cover_letter(
+        self, resume: Resume, job: Job, match: MatchResult
+    ) -> str:
         """Generate a cover letter for a specific job."""
         ...
 

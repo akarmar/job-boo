@@ -11,7 +11,13 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
-from job_boo.config import CONFIG_DIR, CONFIG_PATH, load_config, ensure_dirs, apply_profile
+from job_boo.config import (
+    CONFIG_DIR,
+    CONFIG_PATH,
+    load_config,
+    ensure_dirs,
+    apply_profile,
+)
 from job_boo.models import JobState
 
 console = Console()
@@ -34,18 +40,28 @@ def init() -> None:
     console.print("\n[bold]Job Boo Setup[/bold]\n")
 
     config["resume_path"] = click.prompt("Path to your resume PDF", type=str)
-    config["job_title"] = click.prompt("Target job title (e.g., Senior Software Engineer)")
-    keywords = click.prompt("Additional search keywords (comma-separated, or blank)", default="")
+    config["job_title"] = click.prompt(
+        "Target job title (e.g., Senior Software Engineer)"
+    )
+    keywords = click.prompt(
+        "Additional search keywords (comma-separated, or blank)", default=""
+    )
     config["keywords"] = [k.strip() for k in keywords.split(",") if k.strip()]
 
     console.print("\n[bold]Location[/bold]")
-    pref = click.prompt("Preference", type=click.Choice(["remote", "hybrid", "onsite"]), default="remote")
+    pref = click.prompt(
+        "Preference",
+        type=click.Choice(["remote", "hybrid", "onsite"]),
+        default="remote",
+    )
     city = ""
     if pref != "remote":
         city = click.prompt("City")
     config["location"] = {"preference": pref, "city": city}
 
-    config["needs_sponsorship"] = click.confirm("Do you need visa sponsorship?", default=False)
+    config["needs_sponsorship"] = click.confirm(
+        "Do you need visa sponsorship?", default=False
+    )
 
     console.print("\n[bold]Salary (USD, enter 0 to skip)[/bold]")
     config["salary"] = {
@@ -54,11 +70,17 @@ def init() -> None:
         "currency": "USD",
     }
 
-    config["match_threshold"] = click.prompt("Minimum match score (0-100)", type=int, default=60)
+    config["match_threshold"] = click.prompt(
+        "Minimum match score (0-100)", type=int, default=60
+    )
 
     console.print("\n[bold]AI Provider[/bold]")
-    provider = click.prompt("Provider", type=click.Choice(["claude", "openai"]), default="claude")
-    api_key = click.prompt("API key (or set JOB_BOO_AI_KEY env var)", default="", hide_input=True)
+    provider = click.prompt(
+        "Provider", type=click.Choice(["claude", "openai"]), default="claude"
+    )
+    api_key = click.prompt(
+        "API key (or set JOB_BOO_AI_KEY env var)", default="", hide_input=True
+    )
     config["ai"] = {"provider": provider, "api_key": api_key, "model": ""}
 
     console.print("\n[bold]Job Sources[/bold]")
@@ -71,12 +93,18 @@ def init() -> None:
 
     if click.confirm("Enable SerpAPI (Google Jobs, paid)?", default=False):
         config["sources"]["serpapi"]["enabled"] = True
-        config["sources"]["serpapi"]["api_key"] = click.prompt("SerpAPI key", default="")
+        config["sources"]["serpapi"]["api_key"] = click.prompt(
+            "SerpAPI key", default=""
+        )
 
     if click.confirm("Enable Adzuna (free tier, 1000 req/month)?", default=True):
         config["sources"]["adzuna"]["enabled"] = True
-        config["sources"]["adzuna"]["app_id"] = click.prompt("Adzuna App ID", default="")
-        config["sources"]["adzuna"]["api_key"] = click.prompt("Adzuna API key", default="")
+        config["sources"]["adzuna"]["app_id"] = click.prompt(
+            "Adzuna App ID", default=""
+        )
+        config["sources"]["adzuna"]["api_key"] = click.prompt(
+            "Adzuna API key", default=""
+        )
 
     config["output_dir"] = str(CONFIG_DIR / "output")
     config["apply"] = {
@@ -86,11 +114,36 @@ def init() -> None:
     }
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(
+        CONFIG_DIR, 0o700
+    )  # nosemgrep: insecure-file-permissions — owner-only dir for secrets
     with open(CONFIG_PATH, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    os.chmod(CONFIG_PATH, 0o600)
 
     console.print(f"\n[green]Config saved to {CONFIG_PATH}[/green]")
     console.print("Run [bold]job-boo search[/bold] to find matching jobs.")
+
+    from rich.panel import Panel
+
+    warning = (
+        "[bold yellow]IMPORTANT NOTICES[/bold yellow]\n\n"
+        "1. [bold]PRIVACY:[/bold] Your resume will be sent to external AI services (Anthropic/OpenAI) "
+        "for skill extraction and job matching. These providers may retain data for up to 30 days. "
+        "Run without an AI key for keyword-only fallback mode.\n\n"
+        "2. [bold]API KEYS:[/bold] Keys stored in ~/.job-boo/config.yaml are protected with restricted "
+        "file permissions (owner-only). For extra security, use environment variables instead.\n\n"
+        "3. [bold]TERMS OF SERVICE:[/bold] Some job sources may prohibit automated access. "
+        "Scraping LinkedIn, Indeed, Glassdoor, or ZipRecruiter (via JobSpy) violates their ToS "
+        "and may result in account suspension, IP blocks, or legal action. Use at your own risk.\n\n"
+        "4. [bold]COSTS:[/bold] AI-powered features make API calls that cost money. "
+        "A typical search-and-score run costs ~$0.50-$1.50 depending on job count."
+    )
+    console.print(
+        Panel(
+            warning, title="[bold red]Security & Privacy[/bold red]", border_style="red"
+        )
+    )
 
 
 @main.command(name="setup-ai")
@@ -102,14 +155,18 @@ def setup_ai() -> None:
     # Show current state
     current_key = config.ai.resolve_key()
     has_key = bool(current_key)
-    masked = f"...{current_key[-6:]}" if len(current_key) > 6 else ("(set)" if has_key else "(not set)")
+    masked = (
+        f"...{current_key[-6:]}"
+        if len(current_key) > 6
+        else ("(set)" if has_key else "(not set)")
+    )
 
     console.print(f"  Current provider:  [cyan]{config.ai.provider}[/cyan]")
     console.print(f"  Current model:     [cyan]{config.ai.resolve_model()}[/cyan]")
     console.print(f"  API key:           [cyan]{masked}[/cyan]")
     env_key = os.environ.get("JOB_BOO_AI_KEY", "")
     if env_key:
-        console.print(f"  Env JOB_BOO_AI_KEY: [green]set[/green]")
+        console.print("  Env JOB_BOO_AI_KEY: [green]set[/green]")
     console.print()
 
     # Choose provider
@@ -121,12 +178,22 @@ def setup_ai() -> None:
 
     # Provider-specific guidance
     if provider == "claude":
-        console.print("\n  [dim]Get your API key at: https://console.anthropic.com/settings/keys[/dim]")
-        console.print("  [dim]Free tier: limited requests. Pay-as-you-go recommended.[/dim]")
-        models = ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001", "claude-opus-4-20250514"]
+        console.print(
+            "\n  [dim]Get your API key at: https://console.anthropic.com/settings/keys[/dim]"
+        )
+        console.print(
+            "  [dim]Free tier: limited requests. Pay-as-you-go recommended.[/dim]"
+        )
+        models = [
+            "claude-sonnet-4-20250514",
+            "claude-haiku-4-5-20251001",
+            "claude-opus-4-20250514",
+        ]
         default_model = "claude-sonnet-4-20250514"
     else:
-        console.print("\n  [dim]Get your API key at: https://platform.openai.com/api-keys[/dim]")
+        console.print(
+            "\n  [dim]Get your API key at: https://platform.openai.com/api-keys[/dim]"
+        )
         console.print("  [dim]Free tier: $5 credit for new accounts.[/dim]")
         models = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
         default_model = "gpt-4o"
@@ -144,8 +211,10 @@ def setup_ai() -> None:
         api_key = click.prompt("API key", hide_input=True)
     elif key_source == "env_var":
         console.print("\n  Add this to your shell profile (~/.zshrc or ~/.bashrc):")
-        console.print(f'  [bold]export JOB_BOO_AI_KEY="your-key-here"[/bold]')
-        console.print("  Then restart your terminal or run: [bold]source ~/.zshrc[/bold]")
+        console.print('  [bold]export JOB_BOO_AI_KEY="your-key-here"[/bold]')
+        console.print(
+            "  Then restart your terminal or run: [bold]source ~/.zshrc[/bold]"
+        )
         api_key = ""  # clear from config, rely on env
 
     # Model selection
@@ -165,6 +234,7 @@ def setup_ai() -> None:
         try:
             if provider == "claude":
                 import anthropic
+
                 client = anthropic.Anthropic(api_key=test_key)
                 resp = client.messages.create(
                     model=model,
@@ -176,6 +246,7 @@ def setup_ai() -> None:
                 tokens_out = resp.usage.output_tokens
             else:
                 import openai as oai
+
                 client = oai.OpenAI(api_key=test_key)
                 resp = client.chat.completions.create(
                     model=model,
@@ -188,20 +259,25 @@ def setup_ai() -> None:
 
             console.print(f"  Response: [green]{reply}[/green]")
             console.print(f"  Tokens used: {tokens_in} in / {tokens_out} out")
-            console.print(f"  [bold green]Connection successful![/bold green]")
+            console.print("  [bold green]Connection successful![/bold green]")
         except Exception as e:
             console.print(f"  [bold red]Connection failed: {e}[/bold red]")
             if not click.confirm("Save config anyway?", default=False):
                 return
     else:
-        console.print("\n[yellow]No API key available to test. Set one via env var or re-run setup.[/yellow]")
+        console.print(
+            "\n[yellow]No API key available to test. Set one via env var or re-run setup.[/yellow]"
+        )
 
     # Save to config
-    _update_config_section("ai", {
-        "provider": provider,
-        "api_key": api_key,
-        "model": model,
-    })
+    _update_config_section(
+        "ai",
+        {
+            "provider": provider,
+            "api_key": api_key,
+            "model": model,
+        },
+    )
     console.print(f"\n[green]AI config saved to {CONFIG_PATH}[/green]")
 
 
@@ -218,7 +294,7 @@ def doctor() -> None:
     if CONFIG_PATH.exists():
         console.print(f"  Config file:       [green]OK[/green] ({CONFIG_PATH})")
     else:
-        console.print(f"  Config file:       [red]MISSING[/red]")
+        console.print("  Config file:       [red]MISSING[/red]")
         issues.append("Run 'job-boo init' to create config")
 
     # Resume
@@ -228,19 +304,23 @@ def doctor() -> None:
             size_kb = resume_path.stat().st_size / 1024
             console.print(f"  Resume PDF:        [green]OK[/green] ({size_kb:.0f} KB)")
         else:
-            console.print(f"  Resume PDF:        [red]NOT FOUND[/red] ({config.resume_path})")
+            console.print(
+                f"  Resume PDF:        [red]NOT FOUND[/red] ({config.resume_path})"
+            )
             issues.append(f"Resume file not found: {config.resume_path}")
     else:
-        console.print(f"  Resume PDF:        [red]NOT SET[/red]")
+        console.print("  Resume PDF:        [red]NOT SET[/red]")
         issues.append("Set resume_path in config")
 
     # AI provider
     ai_key = config.ai.resolve_key()
     if ai_key:
-        console.print(f"  AI provider:       [green]{config.ai.provider}[/green] (model: {config.ai.resolve_model()})")
+        console.print(
+            f"  AI provider:       [green]{config.ai.provider}[/green] (model: {config.ai.resolve_model()})"
+        )
         console.print(f"  AI key:            [green]...{ai_key[-6:]}[/green]")
     else:
-        console.print(f"  AI provider:       [red]NO KEY[/red]")
+        console.print("  AI provider:       [red]NO KEY[/red]")
         issues.append("Run 'job-boo setup-ai' to configure AI provider")
 
     # Job sources
@@ -255,25 +335,33 @@ def doctor() -> None:
         active_sources.append("Remotive")
 
     if active_sources:
-        console.print(f"  Job sources:       [green]{', '.join(active_sources)}[/green]")
+        console.print(
+            f"  Job sources:       [green]{', '.join(active_sources)}[/green]"
+        )
     else:
-        console.print(f"  Job sources:       [red]NONE[/red]")
+        console.print("  Job sources:       [red]NONE[/red]")
         issues.append("No job sources configured")
 
     # Free sources without keys
     if not config.sources.adzuna.resolve_key() and config.sources.adzuna.enabled:
-        warnings.append("Adzuna enabled but no API key — get a free key at developer.adzuna.com")
+        warnings.append(
+            "Adzuna enabled but no API key — get a free key at developer.adzuna.com"
+        )
 
     # Search criteria
     if config.job_title:
         console.print(f"  Job title:         [green]{config.job_title}[/green]")
     else:
-        console.print(f"  Job title:         [yellow]NOT SET[/yellow]")
+        console.print("  Job title:         [yellow]NOT SET[/yellow]")
         warnings.append("Set job_title in config for better search results")
 
-    console.print(f"  Location:          {config.location.preference}" +
-                  (f" ({config.location.city})" if config.location.city else ""))
-    console.print(f"  Sponsorship:       {'needed' if config.needs_sponsorship else 'not needed'}")
+    console.print(
+        f"  Location:          {config.location.preference}"
+        + (f" ({config.location.city})" if config.location.city else "")
+    )
+    console.print(
+        f"  Sponsorship:       {'needed' if config.needs_sponsorship else 'not needed'}"
+    )
     console.print(f"  Match threshold:   {config.match_threshold}%")
 
     # Output dir
@@ -281,20 +369,26 @@ def doctor() -> None:
     if out_dir.exists():
         console.print(f"  Output dir:        [green]OK[/green] ({out_dir})")
     else:
-        console.print(f"  Output dir:        [yellow]will be created[/yellow] ({out_dir})")
+        console.print(
+            f"  Output dir:        [yellow]will be created[/yellow] ({out_dir})"
+        )
 
     # DB
     from job_boo.config import DB_PATH
+
     if DB_PATH.exists():
         size_kb = DB_PATH.stat().st_size / 1024
         from job_boo.storage.db import JobDB
+
         db = JobDB()
         stats = db.get_stats()
         total = sum(stats.values())
         db.close()
-        console.print(f"  Database:          [green]{total} jobs tracked[/green] ({size_kb:.0f} KB)")
+        console.print(
+            f"  Database:          [green]{total} jobs tracked[/green] ({size_kb:.0f} KB)"
+        )
     else:
-        console.print(f"  Database:          [dim]not yet created[/dim]")
+        console.print("  Database:          [dim]not yet created[/dim]")
 
     # Summary
     console.print()
@@ -307,22 +401,32 @@ def doctor() -> None:
         for warning in warnings:
             console.print(f"  [yellow]  {warning}[/yellow]")
     if not issues and not warnings:
-        console.print("[bold green]All good! Run 'job-boo search' to get started.[/bold green]")
+        console.print(
+            "[bold green]All good! Run 'job-boo search' to get started.[/bold green]"
+        )
     elif not issues:
-        console.print("\n[green]No blocking issues. You can run 'job-boo search'.[/green]")
+        console.print(
+            "\n[green]No blocking issues. You can run 'job-boo search'.[/green]"
+        )
 
 
 @main.command(name="reset")
 @click.option("--jobs", is_flag=True, help="Clear all tracked jobs from the database")
-@click.option("--config", "reset_config", is_flag=True, help="Delete config and start fresh")
-@click.option("--output", is_flag=True, help="Delete all tailored resumes and cover letters")
+@click.option(
+    "--config", "reset_config", is_flag=True, help="Delete config and start fresh"
+)
+@click.option(
+    "--output", is_flag=True, help="Delete all tailored resumes and cover letters"
+)
 @click.option("--everything", is_flag=True, help="Wipe all job-boo data")
 def reset(jobs: bool, reset_config: bool, output: bool, everything: bool) -> None:
     """Reset job-boo data (database, config, or output files)."""
     from job_boo.config import DB_PATH
 
     if not any([jobs, reset_config, output, everything]):
-        console.print("Specify what to reset: --jobs, --config, --output, or --everything")
+        console.print(
+            "Specify what to reset: --jobs, --config, --output, or --everything"
+        )
         console.print("Run 'job-boo reset --help' for details.")
         return
 
@@ -341,7 +445,9 @@ def reset(jobs: bool, reset_config: bool, output: bool, everything: bool) -> Non
         if CONFIG_PATH.exists():
             if click.confirm(f"Delete config ({CONFIG_PATH})?"):
                 CONFIG_PATH.unlink()
-                console.print("[green]  Config deleted. Run 'job-boo init' to reconfigure.[/green]")
+                console.print(
+                    "[green]  Config deleted. Run 'job-boo init' to reconfigure.[/green]"
+                )
         else:
             console.print("  [dim]No config to delete.[/dim]")
 
@@ -358,7 +464,13 @@ def reset(jobs: bool, reset_config: bool, output: bool, everything: bool) -> Non
 
 
 @main.command(name="export")
-@click.option("--format", "fmt", type=click.Choice(["csv", "json"]), default="csv", help="Export format")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["csv", "json"]),
+    default="csv",
+    help="Export format",
+)
 @click.option("--min-score", type=float, default=0, help="Minimum score filter")
 @click.option("--output", "-o", type=click.Path(), help="Output file path")
 def export_jobs(fmt: str, min_score: float, output: str | None) -> None:
@@ -377,11 +489,25 @@ def export_jobs(fmt: str, min_score: float, output: str | None) -> None:
         return
 
     export_fields = [
-        "id", "title", "company", "location", "url", "source",
-        "final_score", "keyword_score", "ai_score",
-        "matched_skills", "missing_skills", "reasoning",
-        "state", "remote", "salary_min", "salary_max",
-        "posted_date", "tailored_resume_path", "cover_letter_path",
+        "id",
+        "title",
+        "company",
+        "location",
+        "url",
+        "source",
+        "final_score",
+        "keyword_score",
+        "ai_score",
+        "matched_skills",
+        "missing_skills",
+        "reasoning",
+        "state",
+        "remote",
+        "salary_min",
+        "salary_max",
+        "posted_date",
+        "tailored_resume_path",
+        "cover_letter_path",
     ]
 
     if fmt == "csv":
@@ -397,7 +523,9 @@ def export_jobs(fmt: str, min_score: float, output: str | None) -> None:
         content = json.dumps(clean_rows, indent=2)
         ext = ".json"
 
-    out_path = output or str(Path(load_config().output_dir).expanduser() / f"jobs_export{ext}")
+    out_path = output or str(
+        Path(load_config().output_dir).expanduser() / f"jobs_export{ext}"
+    )
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(content)
     console.print(f"[green]Exported {len(rows)} jobs to {out_path}[/green]")
@@ -414,15 +542,26 @@ def _update_config_section(section: str, values: dict) -> None:
     data[section] = values
     with open(CONFIG_PATH, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+    os.chmod(CONFIG_PATH, 0o600)
 
 
 @main.command()
 @click.option("--url", help="Score a specific job listing URL")
 @click.option("--threshold", type=int, help="Override match threshold")
 @click.option("--limit", type=int, default=50, help="Max jobs to return per source")
-@click.option("--profile", type=str, default=None, help="Use a named profile from config")
-@click.option("--days", type=int, default=None, help="Only include jobs posted within N days")
-def search(url: str | None, threshold: int | None, limit: int, profile: str | None, days: int | None) -> None:
+@click.option(
+    "--profile", type=str, default=None, help="Use a named profile from config"
+)
+@click.option(
+    "--days", type=int, default=None, help="Only include jobs posted within N days"
+)
+def search(
+    url: str | None,
+    threshold: int | None,
+    limit: int,
+    profile: str | None,
+    days: int | None,
+) -> None:
     """Search for jobs and score them against your resume."""
     config = load_config()
     if profile:
@@ -441,17 +580,21 @@ def search(url: str | None, threshold: int | None, limit: int, profile: str | No
 
     console.print("\n[bold]Parsing resume...[/bold]")
     resume = parse_resume(config.resume_path, ai)
-    console.print(f"  Found [green]{len(resume.skills)}[/green] skills: {', '.join(resume.skills[:10])}...")
+    console.print(
+        f"  Found [green]{len(resume.skills)}[/green] skills: {', '.join(resume.skills[:10])}..."
+    )
 
     db = JobDB()
 
     if url:
         from job_boo.search.url import parse_job_url
-        console.print(f"\n[bold]Parsing job URL...[/bold]")
+
+        console.print("\n[bold]Parsing job URL...[/bold]")
         job = parse_job_url(url)
         jobs = [job]
     else:
         from job_boo.search import search_all_sources
+
         console.print(f"\n[bold]Searching for '{config.job_title}'...[/bold]")
         jobs = search_all_sources(config, max_days=days)
 
@@ -462,6 +605,12 @@ def search(url: str | None, threshold: int | None, limit: int, profile: str | No
     # Save raw jobs to DB
     for job in jobs:
         db.upsert_job(job)
+
+    # Show cost estimate before AI scoring
+    estimated_cost = len(jobs) * 0.003  # ~$0.003 per job for scoring
+    console.print(
+        f"[dim]Estimated AI scoring cost: ~${estimated_cost:.2f} for {len(jobs)} jobs[/dim]"
+    )
 
     console.print(f"\n[bold]Scoring {len(jobs)} jobs...[/bold]")
     matches = score_jobs(resume, jobs, ai, config)
@@ -479,7 +628,9 @@ def search(url: str | None, threshold: int | None, limit: int, profile: str | No
 
 @main.command()
 @click.argument("job_id", type=int)
-@click.option("--profile", type=str, default=None, help="Use a named profile from config")
+@click.option(
+    "--profile", type=str, default=None, help="Use a named profile from config"
+)
 def tailor(job_id: int, profile: str | None) -> None:
     """Tailor your resume for a specific job (by DB ID)."""
     config = load_config()
@@ -497,7 +648,9 @@ def tailor(job_id: int, profile: str | None) -> None:
 
     row = db.get_job_by_id(job_id)
     if not row:
-        console.print(f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]")
+        console.print(
+            f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
+        )
         return
 
     resume = parse_resume(config.resume_path, ai)
@@ -507,9 +660,12 @@ def tailor(job_id: int, profile: str | None) -> None:
         resume, match, ai, config.output_dir, config.apply.include_cover_letter
     )
 
-    db.update_state(job_id, JobState.TAILORED,
-                    tailored_resume_path=resume_path,
-                    cover_letter_path=cover_path)
+    db.update_state(
+        job_id,
+        JobState.TAILORED,
+        tailored_resume_path=resume_path,
+        cover_letter_path=cover_path,
+    )
     db.close()
 
 
@@ -536,26 +692,35 @@ def apply(job_id: int | None, min_score: float | None, no_confirm: bool) -> None
             return
         match = db.row_to_match(row)
         app = Application(
-            job=match.job, match=match,
+            job=match.job,
+            match=match,
             tailored_resume_path=row.get("tailored_resume_path", ""),
             cover_letter_path=row.get("cover_letter_path", ""),
             db_id=row["id"],
         )
-        submit_application(app, db, confirm=confirm, delay=config.apply.delay_between_applications)
+        submit_application(
+            app, db, confirm=confirm, delay=config.apply.delay_between_applications
+        )
     elif min_score is not None:
         rows = db.get_jobs(min_score=min_score)
         matches = [db.row_to_match(r) for r in rows]
-        batch_apply(matches, db, confirm=confirm, delay=config.apply.delay_between_applications)
+        batch_apply(
+            matches, db, confirm=confirm, delay=config.apply.delay_between_applications
+        )
     else:
         # Default: apply to all scored jobs above threshold
         rows = db.get_jobs(state=JobState.TAILORED, min_score=config.match_threshold)
         if not rows:
             rows = db.get_jobs(state=JobState.SCORED, min_score=config.match_threshold)
         if not rows:
-            console.print("[yellow]No jobs ready to apply. Run 'job-boo search' first.[/yellow]")
+            console.print(
+                "[yellow]No jobs ready to apply. Run 'job-boo search' first.[/yellow]"
+            )
             return
         matches = [db.row_to_match(r) for r in rows]
-        batch_apply(matches, db, confirm=confirm, delay=config.apply.delay_between_applications)
+        batch_apply(
+            matches, db, confirm=confirm, delay=config.apply.delay_between_applications
+        )
 
     db.close()
 
@@ -563,9 +728,15 @@ def apply(job_id: int | None, min_score: float | None, no_confirm: bool) -> None
 @main.command(name="all")
 @click.option("--threshold", type=int, help="Override match threshold")
 @click.option("--no-confirm", is_flag=True, help="Skip confirmation for applications")
-@click.option("--profile", type=str, default=None, help="Use a named profile from config")
-@click.option("--days", type=int, default=None, help="Only include jobs posted within N days")
-def run_all(threshold: int | None, no_confirm: bool, profile: str | None, days: int | None) -> None:
+@click.option(
+    "--profile", type=str, default=None, help="Use a named profile from config"
+)
+@click.option(
+    "--days", type=int, default=None, help="Only include jobs posted within N days"
+)
+def run_all(
+    threshold: int | None, no_confirm: bool, profile: str | None, days: int | None
+) -> None:
     """Full pipeline: search -> score -> tailor -> apply."""
     config = load_config()
     if profile:
@@ -602,6 +773,12 @@ def run_all(threshold: int | None, no_confirm: bool, profile: str | None, days: 
         return
 
     # Step 3: Score
+    # Show cost estimate before AI scoring
+    estimated_cost = len(jobs) * 0.003  # ~$0.003 per job for scoring
+    console.print(
+        f"[dim]Estimated AI scoring cost: ~${estimated_cost:.2f} for {len(jobs)} jobs[/dim]"
+    )
+
     console.print(f"\n[bold]Step 3/4: Scoring {len(jobs)} jobs...[/bold]")
     matches = score_jobs(resume, jobs, ai, config)
     for match in matches:
@@ -611,11 +788,15 @@ def run_all(threshold: int | None, no_confirm: bool, profile: str | None, days: 
     _display_results(above, config.match_threshold)
 
     if not above:
-        console.print("[yellow]No jobs above threshold. Try lowering match_threshold.[/yellow]")
+        console.print(
+            "[yellow]No jobs above threshold. Try lowering match_threshold.[/yellow]"
+        )
         return
 
     # Step 4: Tailor top matches
-    console.print(f"\n[bold]Step 4/4: Tailoring resumes for top {min(len(above), 10)} matches...[/bold]")
+    console.print(
+        f"\n[bold]Step 4/4: Tailoring resumes for top {min(len(above), 10)} matches...[/bold]"
+    )
     for match in above[:10]:
         try:
             resume_path, cover_path = tailor_for_job(
@@ -625,9 +806,12 @@ def run_all(threshold: int | None, no_confirm: bool, profile: str | None, days: 
             rows = db.get_jobs(min_score=0, limit=1000)
             for r in rows:
                 if r["dedup_key"] == match.job.dedup_key():
-                    db.update_state(r["id"], JobState.TAILORED,
-                                    tailored_resume_path=resume_path,
-                                    cover_letter_path=cover_path)
+                    db.update_state(
+                        r["id"],
+                        JobState.TAILORED,
+                        tailored_resume_path=resume_path,
+                        cover_letter_path=cover_path,
+                    )
                     break
         except Exception as e:
             console.print(f"  [red]Error tailoring for {match.job.company}: {e}[/red]")
@@ -635,13 +819,17 @@ def run_all(threshold: int | None, no_confirm: bool, profile: str | None, days: 
     # Apply
     confirm = config.apply.confirm_before_submit and not no_confirm
     if click.confirm(f"\nReady to apply to {len(above)} jobs?", default=True):
-        batch_apply(above, db, confirm=confirm, delay=config.apply.delay_between_applications)
+        batch_apply(
+            above, db, confirm=confirm, delay=config.apply.delay_between_applications
+        )
 
     db.close()
 
 
 @main.command()
-@click.option("--state", type=click.Choice([s.value for s in JobState]), help="Filter by state")
+@click.option(
+    "--state", type=click.Choice([s.value for s in JobState]), help="Filter by state"
+)
 @click.option("--min-score", type=float, default=0, help="Minimum score filter")
 @click.option("--limit", type=int, default=50, help="Max results")
 def jobs(state: str | None, min_score: float, limit: int) -> None:
@@ -692,7 +880,9 @@ def status() -> None:
     stats = db.get_stats()
 
     if not stats:
-        console.print("[yellow]No data yet. Run 'job-boo search' to get started.[/yellow]")
+        console.print(
+            "[yellow]No data yet. Run 'job-boo search' to get started.[/yellow]"
+        )
         return
 
     console.print("\n[bold]Pipeline Dashboard[/bold]\n")
@@ -722,7 +912,9 @@ def show(job_id: int) -> None:
     db = JobDB()
     row = db.get_job_by_id(job_id)
     if not row:
-        console.print(f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]")
+        console.print(
+            f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
+        )
         db.close()
         return
 
@@ -749,7 +941,9 @@ def show(job_id: int) -> None:
     description = row["description"] or ""
     desc_preview = description[:500] + ("..." if len(description) > 500 else "")
 
-    score_color = "green" if final_score >= 70 else "yellow" if final_score >= 50 else "red"
+    score_color = (
+        "green" if final_score >= 70 else "yellow" if final_score >= 50 else "red"
+    )
 
     lines = [
         f"[bold]{title}[/bold] at [bold]{company}[/bold]",
@@ -761,7 +955,7 @@ def show(job_id: int) -> None:
         f"[dim]Posted:[/dim]      {posted_date}",
         f"[dim]Applied:[/dim]     {applied_at}",
         "",
-        f"[bold]Score Breakdown[/bold]",
+        "[bold]Score Breakdown[/bold]",
         f"  Keyword:  {keyword_score:.0f}%",
         f"  AI:       {ai_score:.0f}%",
         f"  Final:    [{score_color}]{final_score:.0f}%[/{score_color}]",
@@ -769,14 +963,16 @@ def show(job_id: int) -> None:
         f"[bold]Matched Skills[/bold]: {', '.join(matched_skills) if matched_skills else 'N/A'}",
         f"[bold]Missing Skills[/bold]: {', '.join(missing_skills) if missing_skills else 'N/A'}",
         "",
-        f"[bold]AI Reasoning[/bold]",
+        "[bold]AI Reasoning[/bold]",
         f"  {reasoning}",
     ]
 
     if notes:
-        lines.extend(["", f"[bold]Notes[/bold]", f"  {notes}"])
+        lines.extend(["", "[bold]Notes[/bold]", f"  {notes}"])
 
-    lines.extend(["", f"[bold]Description (first 500 chars)[/bold]", f"  {desc_preview}"])
+    lines.extend(
+        ["", "[bold]Description (first 500 chars)[/bold]", f"  {desc_preview}"]
+    )
 
     panel = Panel("\n".join(lines), title=f"Job #{job_id}", border_style="cyan")
     console.print(panel)
@@ -793,20 +989,28 @@ def note(job_id: int, text: str | None) -> None:
     db = JobDB()
     row = db.get_job_by_id(job_id)
     if not row:
-        console.print(f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]")
+        console.print(
+            f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
+        )
         db.close()
         return
 
     if text is None:
         current_notes = row.get("notes") or ""
         if current_notes:
-            console.print(f"[bold]Notes for Job #{job_id}[/bold] ({row['company']} - {row['title']}):")
+            console.print(
+                f"[bold]Notes for Job #{job_id}[/bold] ({row['company']} - {row['title']}):"
+            )
             console.print(f"  {current_notes}")
         else:
-            console.print(f"[yellow]No notes for Job #{job_id}. Use 'job-boo note {job_id} \"your note\"' to add one.[/yellow]")
+            console.print(
+                f"[yellow]No notes for Job #{job_id}. Use 'job-boo note {job_id} \"your note\"' to add one.[/yellow]"
+            )
     else:
         db.update_notes(job_id, text)
-        console.print(f"[green]Note saved for Job #{job_id} ({row['company']} - {row['title']}).[/green]")
+        console.print(
+            f"[green]Note saved for Job #{job_id} ({row['company']} - {row['title']}).[/green]"
+        )
 
     db.close()
 
@@ -830,22 +1034,28 @@ def prep(job_id: int) -> None:
     db = JobDB()
     row = db.get_job_by_id(job_id)
     if not row:
-        console.print(f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]")
+        console.print(
+            f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
+        )
         db.close()
         return
 
     ai = get_provider(config.ai)
     job = db.row_to_job(row)
 
-    console.print(f"\n[bold]Parsing resume...[/bold]")
+    console.print("\n[bold]Parsing resume...[/bold]")
     resume = parse_resume(config.resume_path, ai)
 
-    console.print(f"[bold]Generating interview prep for {job.title} at {job.company}...[/bold]\n")
+    console.print(
+        f"[bold]Generating interview prep for {job.title} at {job.company}...[/bold]\n"
+    )
     prep_text = ai.prep_interview(resume, job)
 
     # Display with rich Markdown panel
     md = Markdown(prep_text)
-    panel = Panel(md, title=f"Interview Prep: {job.title} @ {job.company}", border_style="green")
+    panel = Panel(
+        md, title=f"Interview Prep: {job.title} @ {job.company}", border_style="green"
+    )
     console.print(panel)
 
     # Save to file
@@ -860,13 +1070,18 @@ def prep(job_id: int) -> None:
 
 
 @main.command()
-@click.option("--interval", type=int, default=24, help="Hours between searches (default: 24)")
+@click.option(
+    "--interval", type=int, default=24, help="Hours between searches (default: 24)"
+)
 @click.option("--once", is_flag=True, help="Run once and exit (for cron jobs)")
-@click.option("--webhook", type=str, default=None, help="POST new matches as JSON to this URL")
+@click.option(
+    "--webhook", type=str, default=None, help="POST new matches as JSON to this URL"
+)
 @click.option("--threshold", type=int, help="Override match threshold")
-def watch(interval: int, once: bool, webhook: str | None, threshold: int | None) -> None:
+def watch(
+    interval: int, once: bool, webhook: str | None, threshold: int | None
+) -> None:
     """Watch for new jobs at a configurable interval."""
-    import json
     import time
 
     import httpx
@@ -886,6 +1101,18 @@ def watch(interval: int, once: bool, webhook: str | None, threshold: int | None)
     ai = get_provider(config.ai)
     resume = parse_resume(config.resume_path, ai)
 
+    console.print(
+        "[yellow]WARNING: Watch mode makes repeated API calls that consume your AI quota. "
+        "Each cycle searches all sources and scores new jobs. "
+        f"At {interval}-hour intervals, expect ~$1-3/day in AI costs.[/yellow]\n"
+    )
+
+    if interval < 4 and not once:
+        console.print(
+            "[yellow]WARNING: Intervals under 4 hours may exhaust free API quotas quickly. "
+            f"At {interval}h intervals, you'll use ~{720 // interval} API calls/month per source.[/yellow]"
+        )
+
     def run_once() -> None:
         db = JobDB()
         existing_keys = db.get_all_dedup_keys()
@@ -901,13 +1128,21 @@ def watch(interval: int, once: bool, webhook: str | None, threshold: int | None)
             db.close()
             return
 
-        console.print(f"[green]{len(new_jobs)} new jobs found[/green] (out of {len(jobs)} total)")
+        console.print(
+            f"[green]{len(new_jobs)} new jobs found[/green] (out of {len(jobs)} total)"
+        )
 
         # Save all jobs to DB
         for job in jobs:
             db.upsert_job(job)
 
         # Score only the new ones
+        # Show cost estimate before AI scoring
+        estimated_cost = len(new_jobs) * 0.003  # ~$0.003 per job for scoring
+        console.print(
+            f"[dim]Estimated AI scoring cost: ~${estimated_cost:.2f} for {len(new_jobs)} jobs[/dim]"
+        )
+
         console.print(f"[bold]Scoring {len(new_jobs)} new jobs...[/bold]")
         matches = score_jobs(resume, new_jobs, ai, config)
         for match in matches:
@@ -918,9 +1153,15 @@ def watch(interval: int, once: bool, webhook: str | None, threshold: int | None)
         if above:
             _display_results(above, config.match_threshold)
         else:
-            console.print(f"[yellow]No new jobs above {config.match_threshold}% threshold.[/yellow]")
+            console.print(
+                f"[yellow]No new jobs above {config.match_threshold}% threshold.[/yellow]"
+            )
 
         # Webhook notification
+        if webhook and not webhook.startswith("https://"):
+            console.print(
+                "[yellow]WARNING: Webhook URL is not HTTPS. Data will be sent unencrypted.[/yellow]"
+            )
         if webhook and above:
             payload = [
                 {
@@ -946,7 +1187,9 @@ def watch(interval: int, once: bool, webhook: str | None, threshold: int | None)
         run_once()
         return
 
-    console.print(f"[bold]Watch mode: checking every {interval} hours. Press Ctrl+C to stop.[/bold]")
+    console.print(
+        f"[bold]Watch mode: checking every {interval} hours. Press Ctrl+C to stop.[/bold]"
+    )
     while True:
         try:
             run_once()
@@ -962,7 +1205,6 @@ def analytics() -> None:
     """Show application analytics and conversion rates."""
     import json
 
-    from rich.panel import Panel
     from rich.table import Table as RichTable
 
     from job_boo.storage.db import JobDB
@@ -972,12 +1214,13 @@ def analytics() -> None:
     all_jobs = db.get_all_jobs()
 
     if not all_jobs:
-        console.print("[yellow]No data yet. Run 'job-boo search' to get started.[/yellow]")
+        console.print(
+            "[yellow]No data yet. Run 'job-boo search' to get started.[/yellow]"
+        )
         db.close()
         return
 
     # Counts by state
-    found = stats.get("found", 0)
     scored = stats.get("scored", 0)
     tailored = stats.get("tailored", 0)
     applied = stats.get("applied", 0)
@@ -1008,7 +1251,9 @@ def analytics() -> None:
     if total > 0:
         conv_table.add_row("Scored / Found", f"{scored_total / total * 100:.1f}%")
     if scored_total > 0:
-        conv_table.add_row("Applied / Scored", f"{applied_total / scored_total * 100:.1f}%")
+        conv_table.add_row(
+            "Applied / Scored", f"{applied_total / scored_total * 100:.1f}%"
+        )
     if total > 0:
         conv_table.add_row("Applied / Found", f"{applied_total / total * 100:.1f}%")
     console.print(conv_table)
@@ -1017,7 +1262,9 @@ def analytics() -> None:
     applied_rows = [r for r in all_jobs if r["state"] == "applied" and r["final_score"]]
     if applied_rows:
         avg_score = sum(r["final_score"] for r in applied_rows) / len(applied_rows)
-        console.print(f"\n[bold]Average match score of applied jobs:[/bold] {avg_score:.1f}%")
+        console.print(
+            f"\n[bold]Average match score of applied jobs:[/bold] {avg_score:.1f}%"
+        )
 
     # Top 5 matched skills and missing skills across all jobs
     matched_counts: dict[str, int] = {}
@@ -1038,7 +1285,9 @@ def analytics() -> None:
 
     if matched_counts:
         console.print()
-        top_matched = sorted(matched_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_matched = sorted(matched_counts.items(), key=lambda x: x[1], reverse=True)[
+            :5
+        ]
         skill_table = RichTable(title="Top 5 Matched Skills")
         skill_table.add_column("Skill", style="green")
         skill_table.add_column("Jobs", justify="right")
@@ -1048,7 +1297,9 @@ def analytics() -> None:
 
     if missing_counts:
         console.print()
-        top_missing = sorted(missing_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_missing = sorted(missing_counts.items(), key=lambda x: x[1], reverse=True)[
+            :5
+        ]
         gap_table = RichTable(title="Top 5 Missing Skills (Skill Gaps)")
         gap_table.add_column("Skill", style="red")
         gap_table.add_column("Jobs", justify="right")
@@ -1073,13 +1324,13 @@ def analytics() -> None:
 
 def _display_results(matches: list, threshold: int) -> None:
     """Display scored results in a rich table."""
-    from job_boo.models import MatchResult
-
     if not matches:
         console.print(f"\n[yellow]No jobs scored above {threshold}%.[/yellow]")
         return
 
-    console.print(f"\n[bold green]{len(matches)} jobs above {threshold}% threshold:[/bold green]\n")
+    console.print(
+        f"\n[bold green]{len(matches)} jobs above {threshold}% threshold:[/bold green]\n"
+    )
 
     table = Table()
     table.add_column("#", style="dim")
@@ -1091,7 +1342,13 @@ def _display_results(matches: list, threshold: int) -> None:
     table.add_column("Flags")
 
     for i, match in enumerate(matches, 1):
-        score_color = "green" if match.final_score >= 70 else "yellow" if match.final_score >= 50 else "red"
+        score_color = (
+            "green"
+            if match.final_score >= 70
+            else "yellow"
+            if match.final_score >= 50
+            else "red"
+        )
         flags = []
         if not match.location_fit:
             flags.append("[red]LOC[/red]")

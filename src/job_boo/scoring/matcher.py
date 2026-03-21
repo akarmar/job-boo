@@ -30,7 +30,11 @@ def keyword_score(resume: Resume, job: Job) -> float:
             matched += 1
         elif len(skill) > 3 and any(
             variant in job_text
-            for variant in [skill.replace(" ", "-"), skill.replace("-", " "), skill.replace(".", "")]
+            for variant in [
+                skill.replace(" ", "-"),
+                skill.replace("-", " "),
+                skill.replace(".", ""),
+            ]
         ):
             matched += 1
 
@@ -100,7 +104,9 @@ def score_jobs(
     )
 
     if not candidates:
-        console.print("[yellow]  No jobs passed the keyword filter. Try broader search terms.[/yellow]")
+        console.print(
+            "[yellow]  No jobs passed the keyword filter. Try broader search terms.[/yellow]"
+        )
         return results
 
     # Pass 2: AI scoring
@@ -116,7 +122,9 @@ def score_jobs(
             match.sponsorship_fit = sponsorship_fit
             results.append(match)
         except Exception as e:
-            console.print(f"  [red]Error scoring {job.company} - {job.title}: {e}[/red]")
+            console.print(
+                f"  [red]Error scoring {job.company} - {job.title}: {e}[/red]"
+            )
 
     # Sort by final score descending
     results.sort(key=lambda m: m.final_score, reverse=True)
