@@ -9,7 +9,7 @@ dependencies = [
     "pymupdf>=1.26.7,<2",
     "httpx>=0.27,<1",
     "anthropic>=0.80,<1",
-    "openai>=1.50,<2",
+    "openai>=1.50,<3",
     "beautifulsoup4>=4.12,<5",
     "rich>=13.0,<15",
 ]
