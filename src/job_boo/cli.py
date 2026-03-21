@@ -11,7 +11,7 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
-from job_boo.config import CONFIG_DIR, CONFIG_PATH, load_config, ensure_dirs
+from job_boo.config import CONFIG_DIR, CONFIG_PATH, load_config, ensure_dirs, apply_profile
 from job_boo.models import JobState
 
 console = Console()
@@ -420,9 +420,13 @@ def _update_config_section(section: str, values: dict) -> None:
 @click.option("--url", help="Score a specific job listing URL")
 @click.option("--threshold", type=int, help="Override match threshold")
 @click.option("--limit", type=int, default=50, help="Max jobs to return per source")
-def search(url: str | None, threshold: int | None, limit: int) -> None:
+@click.option("--profile", type=str, default=None, help="Use a named profile from config")
+@click.option("--days", type=int, default=None, help="Only include jobs posted within N days")
+def search(url: str | None, threshold: int | None, limit: int, profile: str | None, days: int | None) -> None:
     """Search for jobs and score them against your resume."""
     config = load_config()
+    if profile:
+        apply_profile(config, profile)
     ensure_dirs(config)
 
     if threshold is not None:
@@ -449,7 +453,7 @@ def search(url: str | None, threshold: int | None, limit: int) -> None:
     else:
         from job_boo.search import search_all_sources
         console.print(f"\n[bold]Searching for '{config.job_title}'...[/bold]")
-        jobs = search_all_sources(config)
+        jobs = search_all_sources(config, max_days=days)
 
     if not jobs:
         console.print("[red]No jobs found. Check your config and API keys.[/red]")
@@ -475,9 +479,12 @@ def search(url: str | None, threshold: int | None, limit: int) -> None:
 
 @main.command()
 @click.argument("job_id", type=int)
-def tailor(job_id: int) -> None:
+@click.option("--profile", type=str, default=None, help="Use a named profile from config")
+def tailor(job_id: int, profile: str | None) -> None:
     """Tailor your resume for a specific job (by DB ID)."""
     config = load_config()
+    if profile:
+        apply_profile(config, profile)
     ensure_dirs(config)
 
     from job_boo.ai import get_provider
@@ -556,9 +563,13 @@ def apply(job_id: int | None, min_score: float | None, no_confirm: bool) -> None
 @main.command(name="all")
 @click.option("--threshold", type=int, help="Override match threshold")
 @click.option("--no-confirm", is_flag=True, help="Skip confirmation for applications")
-def run_all(threshold: int | None, no_confirm: bool) -> None:
+@click.option("--profile", type=str, default=None, help="Use a named profile from config")
+@click.option("--days", type=int, default=None, help="Only include jobs posted within N days")
+def run_all(threshold: int | None, no_confirm: bool, profile: str | None, days: int | None) -> None:
     """Full pipeline: search -> score -> tailor -> apply."""
     config = load_config()
+    if profile:
+        apply_profile(config, profile)
     ensure_dirs(config)
 
     if threshold is not None:
@@ -582,7 +593,7 @@ def run_all(threshold: int | None, no_confirm: bool) -> None:
 
     # Step 2: Search
     console.print(f"\n[bold]Step 2/4: Searching for '{config.job_title}'...[/bold]")
-    jobs = search_all_sources(config)
+    jobs = search_all_sources(config, max_days=days)
     for job in jobs:
         db.upsert_job(job)
 
@@ -698,6 +709,105 @@ def status() -> None:
 
     table.add_row("[bold]TOTAL[/bold]", f"[bold]{total}[/bold]")
     console.print(table)
+    db.close()
+
+
+@main.command()
+@click.argument("job_id", type=int)
+def show(job_id: int) -> None:
+    """Show detailed information for a specific job (by DB ID)."""
+    from rich.panel import Panel
+    from job_boo.storage.db import JobDB
+
+    db = JobDB()
+    row = db.get_job_by_id(job_id)
+    if not row:
+        console.print(f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]")
+        db.close()
+        return
+
+    import json
+
+    title = row["title"] or ""
+    company = row["company"] or ""
+    location = row["location"] or "N/A"
+    remote = "Yes" if row["remote"] else "No"
+    state = row["state"] or "found"
+    url = row["url"] or "N/A"
+    posted_date = row["posted_date"] or "N/A"
+    applied_at = row["applied_at"] or "N/A"
+    notes = row["notes"] or ""
+
+    keyword_score = row["keyword_score"] or 0
+    ai_score = row["ai_score"] or 0
+    final_score = row["final_score"] or 0
+    reasoning = row["reasoning"] or "N/A"
+
+    matched_skills = json.loads(row["matched_skills"]) if row["matched_skills"] else []
+    missing_skills = json.loads(row["missing_skills"]) if row["missing_skills"] else []
+
+    description = row["description"] or ""
+    desc_preview = description[:500] + ("..." if len(description) > 500 else "")
+
+    score_color = "green" if final_score >= 70 else "yellow" if final_score >= 50 else "red"
+
+    lines = [
+        f"[bold]{title}[/bold] at [bold]{company}[/bold]",
+        "",
+        f"[dim]Location:[/dim]    {location}",
+        f"[dim]Remote:[/dim]      {remote}",
+        f"[dim]State:[/dim]       {state}",
+        f"[dim]URL:[/dim]         {url}",
+        f"[dim]Posted:[/dim]      {posted_date}",
+        f"[dim]Applied:[/dim]     {applied_at}",
+        "",
+        f"[bold]Score Breakdown[/bold]",
+        f"  Keyword:  {keyword_score:.0f}%",
+        f"  AI:       {ai_score:.0f}%",
+        f"  Final:    [{score_color}]{final_score:.0f}%[/{score_color}]",
+        "",
+        f"[bold]Matched Skills[/bold]: {', '.join(matched_skills) if matched_skills else 'N/A'}",
+        f"[bold]Missing Skills[/bold]: {', '.join(missing_skills) if missing_skills else 'N/A'}",
+        "",
+        f"[bold]AI Reasoning[/bold]",
+        f"  {reasoning}",
+    ]
+
+    if notes:
+        lines.extend(["", f"[bold]Notes[/bold]", f"  {notes}"])
+
+    lines.extend(["", f"[bold]Description (first 500 chars)[/bold]", f"  {desc_preview}"])
+
+    panel = Panel("\n".join(lines), title=f"Job #{job_id}", border_style="cyan")
+    console.print(panel)
+    db.close()
+
+
+@main.command()
+@click.argument("job_id", type=int)
+@click.argument("text", required=False, default=None)
+def note(job_id: int, text: str | None) -> None:
+    """Add or view notes for a job. If no text is provided, shows current notes."""
+    from job_boo.storage.db import JobDB
+
+    db = JobDB()
+    row = db.get_job_by_id(job_id)
+    if not row:
+        console.print(f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]")
+        db.close()
+        return
+
+    if text is None:
+        current_notes = row.get("notes") or ""
+        if current_notes:
+            console.print(f"[bold]Notes for Job #{job_id}[/bold] ({row['company']} - {row['title']}):")
+            console.print(f"  {current_notes}")
+        else:
+            console.print(f"[yellow]No notes for Job #{job_id}. Use 'job-boo note {job_id} \"your note\"' to add one.[/yellow]")
+    else:
+        db.update_notes(job_id, text)
+        console.print(f"[green]Note saved for Job #{job_id} ({row['company']} - {row['title']}).[/green]")
+
     db.close()
 
 

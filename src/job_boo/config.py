@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import click
 import yaml
 
 
@@ -87,6 +88,12 @@ class ApplyConfig:
 
 
 @dataclass
+class CompaniesConfig:
+    blacklist: list[str] = field(default_factory=list)
+    whitelist: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     resume_path: str = ""
     job_title: str = ""
@@ -99,6 +106,8 @@ class Config:
     sources: SourcesConfig = field(default_factory=SourcesConfig)
     output_dir: str = str(OUTPUT_DIR)
     apply: ApplyConfig = field(default_factory=ApplyConfig)
+    companies: CompaniesConfig = field(default_factory=CompaniesConfig)
+    profiles: dict[str, dict] = field(default_factory=dict)
 
 
 def _get_nested(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
@@ -126,6 +135,8 @@ def load_config(path: Path | None = None) -> Config:
     salary_data = data.get("salary", {})
     ai_data = data.get("ai", {})
     apply_data = data.get("apply", {})
+    companies_data = data.get("companies", {})
+    profiles_data = data.get("profiles", {})
 
     return Config(
         resume_path=data.get("resume_path", ""),
@@ -167,7 +178,29 @@ def load_config(path: Path | None = None) -> Config:
             include_cover_letter=apply_data.get("include_cover_letter", True),
             delay_between_applications=apply_data.get("delay_between_applications", 5),
         ),
+        companies=CompaniesConfig(
+            blacklist=companies_data.get("blacklist", []),
+            whitelist=companies_data.get("whitelist", []),
+        ),
+        profiles=profiles_data if isinstance(profiles_data, dict) else {},
     )
+
+
+def apply_profile(config: Config, profile_name: str) -> Config:
+    """Merge a named profile's settings into the config, overriding job_title, keywords, and resume_path."""
+    if profile_name not in config.profiles:
+        raise click.ClickException(
+            f"Profile '{profile_name}' not found. "
+            f"Available profiles: {', '.join(config.profiles.keys()) or '(none)'}"
+        )
+    profile = config.profiles[profile_name]
+    if "job_title" in profile:
+        config.job_title = profile["job_title"]
+    if "keywords" in profile:
+        config.keywords = profile["keywords"]
+    if "resume_path" in profile:
+        config.resume_path = profile["resume_path"]
+    return config
 
 
 def ensure_dirs(config: Config) -> None:
