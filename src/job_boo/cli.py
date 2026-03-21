@@ -1308,11 +1308,11 @@ def analytics() -> None:
             gap_table.add_row(skill, str(count))
         console.print(gap_table)
 
-    # Jobs applied per day (last 7 days)
-    daily = db.get_applied_per_day(days=7)
+    # Jobs applied per day (last 30 days)
+    daily = db.get_applied_per_day(days=30)
     if daily:
         console.print()
-        daily_table = RichTable(title="Applications Per Day (Last 7 Days)")
+        daily_table = RichTable(title="Applications Per Day (Last 30 Days)")
         daily_table.add_column("Date", style="bold")
         daily_table.add_column("Applications", justify="right")
         for entry in daily:
@@ -1320,6 +1320,143 @@ def analytics() -> None:
         console.print(daily_table)
 
     console.print()
+    db.close()
+
+
+@main.command()
+@click.option("--output", type=str, default=None, help="Output HTML file path")
+def dashboard(output: str | None) -> None:
+    """Generate an HTML analytics dashboard with charts and tables."""
+    from pathlib import Path
+
+    from job_boo.analytics.dashboard import generate_dashboard
+
+    output_path = Path(output) if output else None
+    path = generate_dashboard(output_path=output_path)
+    console.print(f"[green]Dashboard generated: {path}[/green]")
+
+    import webbrowser
+
+    if click.confirm("Open in browser?", default=True):
+        webbrowser.open(f"file://{path.resolve()}")
+
+
+@main.command()
+@click.option(
+    "--days", type=int, default=90, help="Delete jobs older than N days (default: 90)"
+)
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would be deleted without deleting"
+)
+def cleanup(days: int, dry_run: bool) -> None:
+    """Remove expired jobs (found/scored only, not applied/tailored)."""
+    from job_boo.storage.db import JobDB
+
+    db = JobDB()
+
+    if dry_run:
+        rows = db.conn.execute(
+            """SELECT COUNT(*) as cnt FROM jobs
+            WHERE state IN ('found', 'scored')
+                AND DATE(updated_at) < DATE('now', ?)""",
+            (f"-{days} days",),
+        ).fetchone()
+        count = rows["cnt"] if rows else 0
+        console.print(
+            f"[yellow]Dry run: {count} jobs in found/scored state older than {days} days would be deleted.[/yellow]"
+        )
+    else:
+        deleted = db.cleanup_expired(days=days)
+        console.print(
+            f"[green]Cleaned up {deleted} expired jobs (older than {days} days).[/green]"
+        )
+
+    db.close()
+
+
+@main.command()
+@click.argument("company", required=False, default=None)
+@click.option(
+    "--days", type=int, default=None, help="Show applications from last N days"
+)
+def history(company: str | None, days: int | None) -> None:
+    """Show application history — optionally filter by company or date range."""
+    from rich.table import Table as RichTable
+
+    from job_boo.storage.db import JobDB
+
+    db = JobDB()
+
+    if company:
+        rows = db.get_company_history(company=company)
+        if not rows:
+            console.print(f"[yellow]No jobs found for company '{company}'.[/yellow]")
+            db.close()
+            return
+        table = RichTable(title=f"History for '{company}'")
+        table.add_column("Company", style="bold")
+        table.add_column("Jobs", justify="right")
+        table.add_column("Applied", justify="right")
+        table.add_column("Avg Score", justify="right")
+        table.add_column("Last Applied")
+        table.add_column("States")
+        for r in rows:
+            table.add_row(
+                r["company"],
+                str(r["job_count"]),
+                str(r["applied_count"]),
+                f"{r['avg_score']:.1f}" if r["avg_score"] else "N/A",
+                r["latest_applied_at"] or "N/A",
+                r["states"] or "",
+            )
+        console.print(table)
+    elif days:
+        from datetime import datetime, timedelta
+
+        end = datetime.now().strftime("%Y-%m-%d")
+        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        rows = db.get_jobs_by_date_range(start, end, state="applied")
+        console.print(
+            f"\n[bold]Applications in last {days} days ({start} to {end}):[/bold] {len(rows)}\n"
+        )
+        if rows:
+            table = RichTable()
+            table.add_column("Date")
+            table.add_column("Company", style="bold")
+            table.add_column("Title")
+            table.add_column("Score", justify="right")
+            for r in rows:
+                score = r.get("final_score") or 0
+                table.add_row(
+                    (r.get("applied_at") or r.get("created_at") or "")[:10],
+                    r["company"],
+                    r["title"],
+                    f"{score:.0f}%",
+                )
+            console.print(table)
+    else:
+        # Default: show all companies summary
+        rows = db.get_company_history()
+        if not rows:
+            console.print("[yellow]No data yet. Run 'job-boo search' first.[/yellow]")
+            db.close()
+            return
+        table = RichTable(title="Company Summary")
+        table.add_column("Company", style="bold")
+        table.add_column("Jobs", justify="right")
+        table.add_column("Applied", justify="right")
+        table.add_column("Avg Score", justify="right")
+        table.add_column("Last Applied")
+        for r in rows[:30]:
+            table.add_row(
+                r["company"][:35],
+                str(r["job_count"]),
+                str(r["applied_count"]),
+                f"{r['avg_score']:.1f}" if r["avg_score"] else "N/A",
+                r["latest_applied_at"] or "—",
+            )
+        console.print(table)
+
     db.close()
 
 

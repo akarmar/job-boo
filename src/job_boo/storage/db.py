@@ -186,7 +186,7 @@ class JobDB:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_applied_per_day(self, days: int = 7) -> list[dict[str, str | int]]:
+    def get_applied_per_day(self, days: int = 30) -> list[dict[str, str | int]]:
         """Return count of jobs applied per day for the last N days."""
         rows = self.conn.execute(
             """SELECT DATE(applied_at) as day, COUNT(*) as cnt
@@ -198,6 +198,94 @@ class JobDB:
             (f"-{days} days",),
         ).fetchall()
         return [{"day": row["day"], "count": row["cnt"]} for row in rows]
+
+    def cleanup_expired(self, days: int = 90) -> int:
+        """Delete jobs in 'found' or 'scored' state not updated in N days."""
+        cursor = self.conn.execute(
+            """DELETE FROM jobs
+            WHERE state IN ('found', 'scored')
+                AND DATE(updated_at) < DATE('now', ?)""",
+            (f"-{days} days",),
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
+    def get_company_history(self, company: str | None = None) -> list[dict]:
+        """Get application history grouped by company."""
+        query = """
+            SELECT company,
+                COUNT(*) as job_count,
+                SUM(CASE WHEN state = 'applied' THEN 1 ELSE 0 END) as applied_count,
+                ROUND(AVG(final_score), 2) as avg_score,
+                MAX(CASE WHEN state = 'applied' THEN applied_at END) as latest_applied_at,
+                GROUP_CONCAT(DISTINCT state) as states
+            FROM jobs
+        """
+        params: list[str] = []
+        if company:
+            query += " WHERE LOWER(company) = LOWER(?)"
+            params.append(company)
+        query += " GROUP BY company ORDER BY job_count DESC"
+        rows = self.conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_jobs_by_date_range(
+        self,
+        start_date: str,
+        end_date: str,
+        state: str | None = None,
+    ) -> list[dict]:
+        """Get jobs created or applied within a date range (ISO format)."""
+        query = """
+            SELECT * FROM jobs
+            WHERE (DATE(created_at) BETWEEN ? AND ?
+                OR DATE(applied_at) BETWEEN ? AND ?)
+        """
+        params: list[str] = [start_date, end_date, start_date, end_date]
+        if state:
+            query += " AND state = ?"
+            params.append(state)
+        query += " ORDER BY created_at DESC"
+        rows = self.conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_source_stats(self) -> list[dict]:
+        """Count of jobs per source."""
+        rows = self.conn.execute(
+            """SELECT source, COUNT(*) as count
+            FROM jobs
+            GROUP BY source
+            ORDER BY count DESC"""
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_score_distribution(self) -> list[dict]:
+        """Count of jobs in score buckets: 0-20, 20-40, 40-60, 60-80, 80-100."""
+        rows = self.conn.execute(
+            """SELECT
+                CASE
+                    WHEN final_score < 20 THEN '0-20'
+                    WHEN final_score < 40 THEN '20-40'
+                    WHEN final_score < 60 THEN '40-60'
+                    WHEN final_score < 80 THEN '60-80'
+                    ELSE '80-100'
+                END as bucket,
+                COUNT(*) as count
+            FROM jobs
+            GROUP BY bucket
+            ORDER BY bucket"""
+        ).fetchall()
+        return [{"bucket": row["bucket"], "count": row["count"]} for row in rows]
+
+    def get_company_applied_history(self) -> list[dict]:
+        """Return applied jobs grouped by company with details."""
+        rows = self.conn.execute(
+            """SELECT company, title, applied_at, final_score
+            FROM jobs
+            WHERE state = 'applied' AND applied_at IS NOT NULL
+            ORDER BY applied_at DESC"""
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def row_to_job(self, row: dict) -> Job:
         return Job(

@@ -37,6 +37,9 @@ Job Boo automates the painful parts of job hunting:
 - **Batch apply** — Open multiple application URLs with tailored materials ready
 - **Watch mode** — Scheduled searches with webhook notifications for new matches
 - **Analytics** — Conversion funnel, skill gap trends, daily application activity
+- **HTML Dashboard** — Interactive charts (Chart.js) with score distribution, company breakdown, skill gaps
+- **Application history** — Search history by company or date range
+- **Auto-cleanup** — Remove stale found/scored jobs older than 90 days
 
 ### Smart Filters
 
@@ -318,6 +321,9 @@ job-boo setup-ai
 | `job-boo note ID`     | Add or view notes for a tracked job                 |
 | `job-boo status`      | Pipeline dashboard with counts per state            |
 | `job-boo analytics`   | Conversion funnel, skill trends, daily activity     |
+| `job-boo dashboard`   | Generate HTML analytics dashboard with charts       |
+| `job-boo history`     | Application history by company or date range        |
+| `job-boo cleanup`     | Remove expired jobs (found/scored older than 90d)   |
 | `job-boo watch`       | Scheduled search — find new jobs at an interval     |
 | `job-boo export`      | Export jobs to CSV or JSON                          |
 | `job-boo reset`       | Clear database, config, or output files             |
@@ -365,8 +371,10 @@ src/job_boo/
 │   └── tailorer.py      # Resume tailoring + cover letter generation
 ├── apply/
 │   └── submitter.py     # Application submission + browser launch
+├── analytics/
+│   └── dashboard.py     # HTML dashboard with Chart.js visualizations
 └── storage/
-    └── db.py            # SQLite job tracking + state machine
+    └── db.py            # SQLite job tracking + state machine + cleanup
 ```
 
 ## Privacy & Security
