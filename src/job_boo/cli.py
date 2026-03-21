@@ -811,6 +811,266 @@ def note(job_id: int, text: str | None) -> None:
     db.close()
 
 
+@main.command()
+@click.argument("job_id", type=int)
+def prep(job_id: int) -> None:
+    """Generate interview preparation material for a job (by DB ID)."""
+    import re
+
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+
+    config = load_config()
+    ensure_dirs(config)
+
+    from job_boo.ai import get_provider
+    from job_boo.resume.parser import parse_resume
+    from job_boo.storage.db import JobDB
+
+    db = JobDB()
+    row = db.get_job_by_id(job_id)
+    if not row:
+        console.print(f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]")
+        db.close()
+        return
+
+    ai = get_provider(config.ai)
+    job = db.row_to_job(row)
+
+    console.print(f"\n[bold]Parsing resume...[/bold]")
+    resume = parse_resume(config.resume_path, ai)
+
+    console.print(f"[bold]Generating interview prep for {job.title} at {job.company}...[/bold]\n")
+    prep_text = ai.prep_interview(resume, job)
+
+    # Display with rich Markdown panel
+    md = Markdown(prep_text)
+    panel = Panel(md, title=f"Interview Prep: {job.title} @ {job.company}", border_style="green")
+    console.print(panel)
+
+    # Save to file
+    out_dir = Path(config.output_dir).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_company = re.sub(r"[^\w\-]", "_", job.company.lower().strip())
+    safe_title = re.sub(r"[^\w\-]", "_", job.title.lower().strip())
+    out_path = out_dir / f"prep_{safe_company}_{safe_title}.txt"
+    out_path.write_text(prep_text)
+    console.print(f"\n[green]Saved to {out_path}[/green]")
+    db.close()
+
+
+@main.command()
+@click.option("--interval", type=int, default=24, help="Hours between searches (default: 24)")
+@click.option("--once", is_flag=True, help="Run once and exit (for cron jobs)")
+@click.option("--webhook", type=str, default=None, help="POST new matches as JSON to this URL")
+@click.option("--threshold", type=int, help="Override match threshold")
+def watch(interval: int, once: bool, webhook: str | None, threshold: int | None) -> None:
+    """Watch for new jobs at a configurable interval."""
+    import json
+    import time
+
+    import httpx
+
+    config = load_config()
+    ensure_dirs(config)
+
+    if threshold is not None:
+        config.match_threshold = threshold
+
+    from job_boo.ai import get_provider
+    from job_boo.resume.parser import parse_resume
+    from job_boo.scoring.matcher import score_jobs
+    from job_boo.search import search_all_sources
+    from job_boo.storage.db import JobDB
+
+    ai = get_provider(config.ai)
+    resume = parse_resume(config.resume_path, ai)
+
+    def run_once() -> None:
+        db = JobDB()
+        existing_keys = db.get_all_dedup_keys()
+
+        console.print(f"\n[bold]Searching for '{config.job_title}'...[/bold]")
+        jobs = search_all_sources(config)
+
+        # Filter to only new jobs
+        new_jobs = [j for j in jobs if j.dedup_key() not in existing_keys]
+
+        if not new_jobs:
+            console.print("[dim]No new jobs found since last run.[/dim]")
+            db.close()
+            return
+
+        console.print(f"[green]{len(new_jobs)} new jobs found[/green] (out of {len(jobs)} total)")
+
+        # Save all jobs to DB
+        for job in jobs:
+            db.upsert_job(job)
+
+        # Score only the new ones
+        console.print(f"[bold]Scoring {len(new_jobs)} new jobs...[/bold]")
+        matches = score_jobs(resume, new_jobs, ai, config)
+        for match in matches:
+            db.update_score(match.job.dedup_key(), match)
+
+        above = [m for m in matches if m.final_score >= config.match_threshold]
+
+        if above:
+            _display_results(above, config.match_threshold)
+        else:
+            console.print(f"[yellow]No new jobs above {config.match_threshold}% threshold.[/yellow]")
+
+        # Webhook notification
+        if webhook and above:
+            payload = [
+                {
+                    "title": m.job.title,
+                    "company": m.job.company,
+                    "location": m.job.location,
+                    "url": m.job.url,
+                    "score": m.final_score,
+                    "matched_skills": m.matched_skills,
+                    "missing_skills": m.missing_skills,
+                }
+                for m in above
+            ]
+            try:
+                resp = httpx.post(webhook, json=payload, timeout=30)
+                console.print(f"[green]Webhook sent ({resp.status_code})[/green]")
+            except Exception as e:
+                console.print(f"[red]Webhook failed: {e}[/red]")
+
+        db.close()
+
+    if once:
+        run_once()
+        return
+
+    console.print(f"[bold]Watch mode: checking every {interval} hours. Press Ctrl+C to stop.[/bold]")
+    while True:
+        try:
+            run_once()
+            console.print(f"\n[dim]Next check in {interval} hours...[/dim]")
+            time.sleep(interval * 3600)
+        except KeyboardInterrupt:
+            console.print("\n[bold]Watch stopped.[/bold]")
+            break
+
+
+@main.command()
+def analytics() -> None:
+    """Show application analytics and conversion rates."""
+    import json
+
+    from rich.panel import Panel
+    from rich.table import Table as RichTable
+
+    from job_boo.storage.db import JobDB
+
+    db = JobDB()
+    stats = db.get_stats()
+    all_jobs = db.get_all_jobs()
+
+    if not all_jobs:
+        console.print("[yellow]No data yet. Run 'job-boo search' to get started.[/yellow]")
+        db.close()
+        return
+
+    # Counts by state
+    found = stats.get("found", 0)
+    scored = stats.get("scored", 0)
+    tailored = stats.get("tailored", 0)
+    applied = stats.get("applied", 0)
+    closed = stats.get("closed", 0)
+    total = sum(stats.values())
+
+    # Pipeline overview
+    console.print("\n[bold]Application Analytics[/bold]\n")
+
+    pipeline_table = RichTable(title="Pipeline Overview")
+    pipeline_table.add_column("Metric", style="bold")
+    pipeline_table.add_column("Value", justify="right")
+    pipeline_table.add_row("Total Jobs Found", str(total))
+    pipeline_table.add_row("Scored", str(scored + tailored + applied + closed))
+    pipeline_table.add_row("Tailored", str(tailored + applied))
+    pipeline_table.add_row("Applied", str(applied))
+    pipeline_table.add_row("Closed", str(closed))
+    console.print(pipeline_table)
+
+    # Conversion rates
+    scored_total = scored + tailored + applied + closed
+    applied_total = applied
+    console.print()
+    conv_table = RichTable(title="Conversion Rates")
+    conv_table.add_column("Conversion", style="bold")
+    conv_table.add_column("Rate", justify="right")
+
+    if total > 0:
+        conv_table.add_row("Scored / Found", f"{scored_total / total * 100:.1f}%")
+    if scored_total > 0:
+        conv_table.add_row("Applied / Scored", f"{applied_total / scored_total * 100:.1f}%")
+    if total > 0:
+        conv_table.add_row("Applied / Found", f"{applied_total / total * 100:.1f}%")
+    console.print(conv_table)
+
+    # Average match score of applied jobs
+    applied_rows = [r for r in all_jobs if r["state"] == "applied" and r["final_score"]]
+    if applied_rows:
+        avg_score = sum(r["final_score"] for r in applied_rows) / len(applied_rows)
+        console.print(f"\n[bold]Average match score of applied jobs:[/bold] {avg_score:.1f}%")
+
+    # Top 5 matched skills and missing skills across all jobs
+    matched_counts: dict[str, int] = {}
+    missing_counts: dict[str, int] = {}
+    for row in all_jobs:
+        if row.get("matched_skills"):
+            try:
+                for skill in json.loads(row["matched_skills"]):
+                    matched_counts[skill] = matched_counts.get(skill, 0) + 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if row.get("missing_skills"):
+            try:
+                for skill in json.loads(row["missing_skills"]):
+                    missing_counts[skill] = missing_counts.get(skill, 0) + 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    if matched_counts:
+        console.print()
+        top_matched = sorted(matched_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        skill_table = RichTable(title="Top 5 Matched Skills")
+        skill_table.add_column("Skill", style="green")
+        skill_table.add_column("Jobs", justify="right")
+        for skill, count in top_matched:
+            skill_table.add_row(skill, str(count))
+        console.print(skill_table)
+
+    if missing_counts:
+        console.print()
+        top_missing = sorted(missing_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        gap_table = RichTable(title="Top 5 Missing Skills (Skill Gaps)")
+        gap_table.add_column("Skill", style="red")
+        gap_table.add_column("Jobs", justify="right")
+        for skill, count in top_missing:
+            gap_table.add_row(skill, str(count))
+        console.print(gap_table)
+
+    # Jobs applied per day (last 7 days)
+    daily = db.get_applied_per_day(days=7)
+    if daily:
+        console.print()
+        daily_table = RichTable(title="Applications Per Day (Last 7 Days)")
+        daily_table.add_column("Date", style="bold")
+        daily_table.add_column("Applications", justify="right")
+        for entry in daily:
+            daily_table.add_row(str(entry["day"]), str(entry["count"]))
+        console.print(daily_table)
+
+    console.print()
+    db.close()
+
+
 def _display_results(matches: list, threshold: int) -> None:
     """Display scored results in a rich table."""
     from job_boo.models import MatchResult

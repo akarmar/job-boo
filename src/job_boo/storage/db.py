@@ -173,6 +173,31 @@ class JobDB:
         ).fetchall()
         return {row["state"]: row["cnt"] for row in rows}
 
+    def get_all_dedup_keys(self) -> set[str]:
+        """Return all dedup_key values in the database."""
+        rows = self.conn.execute("SELECT dedup_key FROM jobs").fetchall()
+        return {row["dedup_key"] for row in rows}
+
+    def get_all_jobs(self, limit: int = 10000) -> list[dict]:
+        """Return all jobs regardless of score."""
+        rows = self.conn.execute(
+            "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_applied_per_day(self, days: int = 7) -> list[dict[str, str | int]]:
+        """Return count of jobs applied per day for the last N days."""
+        rows = self.conn.execute(
+            """SELECT DATE(applied_at) as day, COUNT(*) as cnt
+            FROM jobs
+            WHERE state = 'applied' AND applied_at IS NOT NULL
+                AND DATE(applied_at) >= DATE('now', ?)
+            GROUP BY DATE(applied_at)
+            ORDER BY day""",
+            (f"-{days} days",),
+        ).fetchall()
+        return [{"day": row["day"], "count": row["cnt"]} for row in rows]
+
     def row_to_job(self, row: dict) -> Job:
         return Job(
             title=row["title"],

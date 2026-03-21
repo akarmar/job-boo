@@ -8,6 +8,7 @@ import openai
 
 from job_boo.ai.prompts import (
     COVER_LETTER_PROMPT,
+    INTERVIEW_PREP_PROMPT,
     SCORE_MATCH_PROMPT,
     SKILL_EXTRACTION_PROMPT,
     TAILOR_RESUME_PROMPT,
@@ -76,6 +77,16 @@ class OpenAIProvider:
             f"WHY I'M A GOOD FIT: {match.reasoning}"
         )
         return self._ask(COVER_LETTER_PROMPT, user_msg, max_tokens=2048)
+
+    def prep_interview(self, resume: Resume, job: Job) -> str:
+        user_msg = (
+            f"CANDIDATE RESUME:\n{resume.raw_text[:4000]}\n\n"
+            f"CANDIDATE SKILLS: {json.dumps(resume.skills)}\n"
+            f"EXPERIENCE: {resume.experience_years} years\n\n"
+            f"JOB TITLE: {job.title}\nCOMPANY: {job.company}\n"
+            f"JOB DESCRIPTION:\n{job.description[:4000]}"
+        )
+        return self._ask(INTERVIEW_PREP_PROMPT, user_msg, max_tokens=8192)
 
 
 def _extract_json(text: str) -> str:
