@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Union
 
 import fitz  # pymupdf
 
 from job_boo.ai.base import AIProvider
+from job_boo.ai.fallback import FallbackProvider
 from job_boo.models import Resume
 
 
@@ -24,8 +26,11 @@ def extract_text_from_pdf(pdf_path: str | Path) -> str:
     return "\n".join(text_parts)
 
 
-def parse_resume(pdf_path: str | Path, ai: AIProvider) -> Resume:
-    """Parse a PDF resume and extract structured data using AI."""
+def parse_resume(
+    pdf_path: str | Path,
+    ai: Union[AIProvider, FallbackProvider],
+) -> Resume:
+    """Parse a PDF resume and extract structured data using AI (or fallback)."""
     raw_text = extract_text_from_pdf(pdf_path)
     if not raw_text.strip():
         raise ValueError(f"No text extracted from {pdf_path}. Is it a scanned image?")

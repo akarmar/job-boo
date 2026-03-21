@@ -77,10 +77,20 @@ class JobDB:
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
-                job.title, job.company, job.location, job.description, job.url,
-                job.source, job.salary_min, job.salary_max, job.remote,
-                job.sponsorship_available, job.posted_date, job.job_id,
-                job.dedup_key(), json.dumps(job.raw_data),
+                job.title,
+                job.company,
+                job.location,
+                job.description,
+                job.url,
+                job.source,
+                job.salary_min,
+                job.salary_max,
+                job.remote,
+                job.sponsorship_available,
+                job.posted_date,
+                job.job_id,
+                job.dedup_key(),
+                json.dumps(job.raw_data),
             ),
         )
         self.conn.commit()
@@ -95,23 +105,38 @@ class JobDB:
                 state = ?, updated_at = CURRENT_TIMESTAMP
             WHERE dedup_key = ?""",
             (
-                match.keyword_score, match.ai_score, match.final_score,
-                json.dumps(match.matched_skills), json.dumps(match.missing_skills),
-                match.reasoning, match.location_fit, match.sponsorship_fit,
-                JobState.SCORED.value, dedup_key,
+                match.keyword_score,
+                match.ai_score,
+                match.final_score,
+                json.dumps(match.matched_skills),
+                json.dumps(match.missing_skills),
+                match.reasoning,
+                match.location_fit,
+                match.sponsorship_fit,
+                JobState.SCORED.value,
+                dedup_key,
             ),
         )
         self.conn.commit()
 
     def update_state(self, db_id: int, state: JobState, **kwargs: str) -> None:
-        sets = ["state = ?", "updated_at = CURRENT_TIMESTAMP"]
-        values: list[str | int] = [state.value]
-        for key, val in kwargs.items():
-            sets.append(f"{key} = ?")
-            values.append(val)
-        values.append(db_id)
         self.conn.execute(
-            f"UPDATE jobs SET {', '.join(sets)} WHERE id = ?", values
+            """UPDATE jobs SET
+                state = ?,
+                tailored_resume_path = COALESCE(?, tailored_resume_path),
+                cover_letter_path = COALESCE(?, cover_letter_path),
+                applied_at = COALESCE(?, applied_at),
+                notes = COALESCE(?, notes),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?""",
+            (
+                state.value,
+                kwargs.get("tailored_resume_path"),
+                kwargs.get("cover_letter_path"),
+                kwargs.get("applied_at"),
+                kwargs.get("notes"),
+                db_id,
+            ),
         )
         self.conn.commit()
 
@@ -165,8 +190,12 @@ class JobDB:
             keyword_score=row["keyword_score"] or 0,
             ai_score=row["ai_score"] or 0,
             final_score=row["final_score"] or 0,
-            matched_skills=json.loads(row["matched_skills"]) if row["matched_skills"] else [],
-            missing_skills=json.loads(row["missing_skills"]) if row["missing_skills"] else [],
+            matched_skills=json.loads(row["matched_skills"])
+            if row["matched_skills"]
+            else [],
+            missing_skills=json.loads(row["missing_skills"])
+            if row["missing_skills"]
+            else [],
             reasoning=row["reasoning"] or "",
             location_fit=bool(row["location_fit"]),
             sponsorship_fit=bool(row["sponsorship_fit"]),
