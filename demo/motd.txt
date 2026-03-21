@@ -1,0 +1,21 @@
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║                                                          ║
+  ║   Job Boo — AI-Powered Job Application Automation      ║
+  ║                                                          ║
+  ║   Quick start:                                           ║
+  ║     job-boo init          # configure                  ║
+  ║     job-boo setup-ai      # set up AI provider         ║
+  ║     job-boo search        # find matching jobs         ║
+  ║     job-boo tailor 1      # tailor resume for job #1   ║
+  ║     job-boo apply 1       # apply to job #1            ║
+  ║     job-boo all           # full pipeline              ║
+  ║                                                          ║
+  ║   Diagnostics:                                           ║
+  ║     job-boo doctor        # check configuration        ║
+  ║     job-boo status        # pipeline dashboard         ║
+  ║     job-boo jobs          # list tracked jobs          ║
+  ║     job-boo export        # export to CSV/JSON         ║
+  ║                                                          ║
+  ╚══════════════════════════════════════════════════════════╝
+

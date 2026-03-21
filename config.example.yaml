@@ -1,0 +1,49 @@
+resume_path: ~/Documents/resume.pdf
+
+# Job search criteria
+job_title: "Senior Software Engineer"
+keywords: []  # additional keywords to include in search
+
+location:
+  preference: remote  # remote | hybrid | onsite
+  city: ""            # required if hybrid or onsite
+
+needs_sponsorship: false
+
+salary:
+  min: 0
+  max: 0
+  currency: USD
+
+# Minimum AI match score (0-100) to consider a job relevant
+match_threshold: 60
+
+# AI provider for skill extraction, scoring, and resume tailoring
+ai:
+  provider: claude  # claude | openai
+  api_key: ""       # or set JOB_BOO_AI_KEY env var
+  model: ""         # optional model override (e.g. claude-sonnet-4-20250514, gpt-4o)
+
+# Job sources — disable any you don't have keys for
+sources:
+  serpapi:
+    enabled: false
+    api_key: ""     # or set SERPAPI_KEY env var
+  adzuna:
+    enabled: true
+    app_id: ""      # or set ADZUNA_APP_ID env var
+    api_key: ""     # or set ADZUNA_API_KEY env var
+    country: us     # two-letter country code
+  themuse:
+    enabled: true
+  remotive:
+    enabled: true
+
+# Where tailored resumes and cover letters are saved
+output_dir: ~/.job-boo/output/
+
+# Auto-apply settings
+apply:
+  confirm_before_submit: true  # always ask before submitting
+  include_cover_letter: true
+  delay_between_applications: 5  # seconds

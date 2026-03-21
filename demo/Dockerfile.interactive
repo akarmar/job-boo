@@ -1,0 +1,31 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash git curl vim jq less tree ca-certificates gnupg \
+    python3 python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install job-boo
+COPY . /opt/job-boo
+WORKDIR /opt/job-boo
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir -e .
+
+# Add venv to PATH
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy helper scripts
+COPY demo/entrypoint.sh /usr/local/bin/entrypoint
+COPY demo/setup-demo-env.sh /usr/local/bin/setup-demo-env
+RUN chmod +x /usr/local/bin/entrypoint /usr/local/bin/setup-demo-env
+
+# Welcome banner
+COPY demo/motd.txt /etc/motd
+RUN echo 'cat /etc/motd' >> /root/.bashrc \
+    && echo '[ -f /tmp/.job-boo-env.sh ] && . /tmp/.job-boo-env.sh' >> /root/.bashrc
+
+WORKDIR /root
+ENTRYPOINT ["entrypoint"]
+CMD ["bash"]
