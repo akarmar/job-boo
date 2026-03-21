@@ -1,0 +1,29 @@
+ai:
+  - changed-files:
+      - any-glob-to-any-file: "src/**/ai/**"
+
+search:
+  - changed-files:
+      - any-glob-to-any-file: "src/**/search/**"
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file: "src/**/cli.py"
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file: "**/*.md"
+
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/**/config.py"
+          - "config.example.yaml"
+
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/security.yml"
+          - ".github/dependabot.yml"
+          - "bandit.yml"
+          - ".semgrep*"
