@@ -42,7 +42,11 @@ def search_remotive(config: Config) -> list[Job]:
         params["search"] = config.job_title
 
     resp = httpx.get("https://remotive.com/api/remote-jobs", params=params, timeout=30)
-    resp.raise_for_status()
+    if resp.status_code != 200:
+        raise RuntimeError(f"Remotive API returned HTTP {resp.status_code}")
+    content_type = resp.headers.get("content-type", "")
+    if "application/json" not in content_type and "text/json" not in content_type:
+        raise RuntimeError(f"Source returned unexpected content-type: {content_type}")
     data = resp.json()
 
     jobs: list[Job] = []
@@ -52,10 +56,13 @@ def search_remotive(config: Config) -> list[Job]:
 
         salary = item.get("salary", "")
         salary_min = 0
+        salary_max = 0
         if salary:
             nums = re.findall(r"[\d,]+", salary)
             if nums:
                 salary_min = int(nums[0].replace(",", ""))
+            if len(nums) > 1:
+                salary_max = int(nums[1].replace(",", ""))
 
         jobs.append(
             Job(
@@ -67,6 +74,7 @@ def search_remotive(config: Config) -> list[Job]:
                 source="remotive",
                 remote=True,
                 salary_min=salary_min,
+                salary_max=salary_max,
                 posted_date=item.get("publication_date", ""),
                 job_id=str(item.get("id", "")),
                 raw_data=item,

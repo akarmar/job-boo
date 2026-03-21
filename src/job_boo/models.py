@@ -51,6 +51,10 @@ class Job:
     job_id: str = ""  # internal ID from source
     raw_data: dict = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if len(self.description) > 5000:
+            self.description = self.description[:5000]
+
     def dedup_key(self) -> str:
         """Key for deduplication across sources."""
         return f"{self.company.lower().strip()}|{self.title.lower().strip()}"

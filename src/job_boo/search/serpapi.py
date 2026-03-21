@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import httpx
 
 from job_boo.config import Config
@@ -31,7 +33,11 @@ def search_serpapi(config: Config) -> list[Job]:
         params["ltype"] = "1"  # remote filter
 
     resp = httpx.get("https://serpapi.com/search", params=params, timeout=30)
-    resp.raise_for_status()
+    if resp.status_code != 200:
+        raise RuntimeError(f"SerpAPI returned HTTP {resp.status_code}")
+    content_type = resp.headers.get("content-type", "")
+    if "application/json" not in content_type and "text/json" not in content_type:
+        raise RuntimeError(f"Source returned unexpected content-type: {content_type}")
     data = resp.json()
 
     jobs: list[Job] = []
@@ -62,8 +68,6 @@ def _parse_salary(salary_str: str) -> int:
     """Extract approximate salary from string like '$120K-$160K'."""
     if not salary_str:
         return 0
-    import re
-
     numbers = re.findall(r"[\d,]+", salary_str.replace("K", "000").replace("k", "000"))
     if numbers:
         return int(numbers[0].replace(",", ""))

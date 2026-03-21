@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 import click
@@ -18,7 +19,7 @@ from job_boo.config import (
     ensure_dirs,
     apply_profile,
 )
-from job_boo.models import JobState
+from job_boo.models import JobState, MatchResult
 
 console = Console()
 
@@ -114,12 +115,14 @@ def init() -> None:
     }
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(
-        CONFIG_DIR, 0o700
-    )  # nosemgrep: insecure-file-permissions — owner-only dir for secrets
+    if sys.platform != "win32":
+        os.chmod(
+            CONFIG_DIR, 0o700
+        )  # nosemgrep: insecure-file-permissions — owner-only dir for secrets
     with open(CONFIG_PATH, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    os.chmod(CONFIG_PATH, 0o600)
+    if sys.platform != "win32":
+        os.chmod(CONFIG_PATH, 0o600)
 
     console.print(f"\n[green]Config saved to {CONFIG_PATH}[/green]")
     console.print("Run [bold]job-boo search[/bold] to find matching jobs.")
@@ -380,10 +383,9 @@ def doctor() -> None:
         size_kb = DB_PATH.stat().st_size / 1024
         from job_boo.storage.db import JobDB
 
-        db = JobDB()
-        stats = db.get_stats()
+        with JobDB() as db:
+            stats = db.get_stats()
         total = sum(stats.values())
-        db.close()
         console.print(
             f"  Database:          [green]{total} jobs tracked[/green] ({size_kb:.0f} KB)"
         )
@@ -430,6 +432,9 @@ def reset(jobs: bool, reset_config: bool, output: bool, everything: bool) -> Non
         console.print("Run 'job-boo reset --help' for details.")
         return
 
+    # Load config once before any deletions (config file may be deleted below)
+    config = load_config()
+
     if everything:
         jobs = reset_config = output = True
 
@@ -452,7 +457,7 @@ def reset(jobs: bool, reset_config: bool, output: bool, everything: bool) -> Non
             console.print("  [dim]No config to delete.[/dim]")
 
     if output:
-        out_dir = Path(load_config().output_dir).expanduser()
+        out_dir = Path(config.output_dir).expanduser()
         if out_dir.exists() and any(out_dir.iterdir()):
             count = len(list(out_dir.iterdir()))
             if click.confirm(f"Delete {count} files in {out_dir}?"):
@@ -480,9 +485,8 @@ def export_jobs(fmt: str, min_score: float, output: str | None) -> None:
     from io import StringIO
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-    rows = db.get_jobs(min_score=min_score, limit=10000)
-    db.close()
+    with JobDB() as db:
+        rows = db.get_jobs(min_score=min_score, limit=10000)
 
     if not rows:
         console.print("[yellow]No jobs to export.[/yellow]")
@@ -531,7 +535,7 @@ def export_jobs(fmt: str, min_score: float, output: str | None) -> None:
     console.print(f"[green]Exported {len(rows)} jobs to {out_path}[/green]")
 
 
-def _update_config_section(section: str, values: dict) -> None:
+def _update_config_section(section: str, values: dict[str, str]) -> None:
     """Update a specific section of the YAML config without overwriting other sections."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     if CONFIG_PATH.exists():
@@ -542,7 +546,8 @@ def _update_config_section(section: str, values: dict) -> None:
     data[section] = values
     with open(CONFIG_PATH, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-    os.chmod(CONFIG_PATH, 0o600)
+    if sys.platform != "win32":
+        os.chmod(CONFIG_PATH, 0o600)
 
 
 @main.command()
@@ -582,8 +587,6 @@ def search(
         f"  Found [green]{len(resume.skills)}[/green] skills: {', '.join(resume.skills[:10])}..."
     )
 
-    db = JobDB()
-
     if url:
         from job_boo.search.url import parse_job_url
 
@@ -598,12 +601,7 @@ def search(
 
     if not jobs:
         console.print("[red]No jobs found. Check your config and API keys.[/red]")
-        db.close()
         return
-
-    # Save raw jobs to DB
-    for job in jobs:
-        db.upsert_job(job)
 
     # Show cost estimate before AI scoring
     estimated_cost = len(jobs) * 0.003  # ~$0.003 per job for scoring
@@ -614,15 +612,19 @@ def search(
     console.print(f"\n[bold]Scoring {len(jobs)} jobs...[/bold]")
     matches = score_jobs(resume, jobs, ai, config)
 
-    # Save scores to DB
-    for match in matches:
-        db.update_score(match.job.dedup_key(), match)
+    with JobDB() as db:
+        # Save raw jobs to DB
+        for job in jobs:
+            db.upsert_job(job)
+
+        # Save scores to DB
+        for match in matches:
+            db.update_score(match.job.dedup_key(), match)
 
     # Filter by threshold
     above = [m for m in matches if m.final_score >= config.match_threshold]
 
     _display_results(above, config.match_threshold)
-    db.close()
 
 
 @main.command()
@@ -643,29 +645,28 @@ def tailor(job_id: int, profile: str | None) -> None:
     from job_boo.tailor.tailorer import tailor_for_job
 
     ai = get_provider(config.ai)
-    db = JobDB()
 
-    row = db.get_job_by_id(job_id)
-    if not row:
-        console.print(
-            f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
+    with JobDB() as db:
+        row = db.get_job_by_id(job_id)
+        if not row:
+            console.print(
+                f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
+            )
+            return
+
+        resume = parse_resume(config.resume_path, ai)
+        match = db.row_to_match(row)
+
+        resume_path, cover_path = tailor_for_job(
+            resume, match, ai, config.output_dir, config.apply.include_cover_letter
         )
-        return
 
-    resume = parse_resume(config.resume_path, ai)
-    match = db.row_to_match(row)
-
-    resume_path, cover_path = tailor_for_job(
-        resume, match, ai, config.output_dir, config.apply.include_cover_letter
-    )
-
-    db.update_state(
-        job_id,
-        JobState.TAILORED,
-        tailored_resume_path=resume_path,
-        cover_letter_path=cover_path,
-    )
-    db.close()
+        db.update_state(
+            job_id,
+            JobState.TAILORED,
+            tailored_resume_path=resume_path,
+            cover_letter_path=cover_path,
+        )
 
 
 @main.command()
@@ -681,47 +682,55 @@ def apply(job_id: int | None, min_score: float | None, no_confirm: bool) -> None
     from job_boo.models import Application
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-    confirm = config.apply.confirm_before_submit and not no_confirm
+    with JobDB() as db:
+        confirm = config.apply.confirm_before_submit and not no_confirm
 
-    if job_id:
-        row = db.get_job_by_id(job_id)
-        if not row:
-            console.print(f"[red]Job ID {job_id} not found.[/red]")
-            return
-        match = db.row_to_match(row)
-        app = Application(
-            job=match.job,
-            match=match,
-            tailored_resume_path=row.get("tailored_resume_path", ""),
-            cover_letter_path=row.get("cover_letter_path", ""),
-            db_id=row["id"],
-        )
-        submit_application(
-            app, db, confirm=confirm, delay=config.apply.delay_between_applications
-        )
-    elif min_score is not None:
-        rows = db.get_jobs(min_score=min_score)
-        matches = [db.row_to_match(r) for r in rows]
-        batch_apply(
-            matches, db, confirm=confirm, delay=config.apply.delay_between_applications
-        )
-    else:
-        # Default: apply to all scored jobs above threshold
-        rows = db.get_jobs(state=JobState.TAILORED, min_score=config.match_threshold)
-        if not rows:
-            rows = db.get_jobs(state=JobState.SCORED, min_score=config.match_threshold)
-        if not rows:
-            console.print(
-                "[yellow]No jobs ready to apply. Run 'job-boo search' first.[/yellow]"
+        if job_id:
+            row = db.get_job_by_id(job_id)
+            if not row:
+                console.print(f"[red]Job ID {job_id} not found.[/red]")
+                return
+            match = db.row_to_match(row)
+            app = Application(
+                job=match.job,
+                match=match,
+                tailored_resume_path=row.get("tailored_resume_path", ""),
+                cover_letter_path=row.get("cover_letter_path", ""),
+                db_id=row["id"],
             )
-            return
-        matches = [db.row_to_match(r) for r in rows]
-        batch_apply(
-            matches, db, confirm=confirm, delay=config.apply.delay_between_applications
-        )
-
-    db.close()
+            submit_application(
+                app, db, confirm=confirm, delay=config.apply.delay_between_applications
+            )
+        elif min_score is not None:
+            rows = db.get_jobs(min_score=min_score)
+            matches = [db.row_to_match(r) for r in rows]
+            batch_apply(
+                matches,
+                db,
+                confirm=confirm,
+                delay=config.apply.delay_between_applications,
+            )
+        else:
+            # Default: apply to all scored jobs above threshold
+            rows = db.get_jobs(
+                state=JobState.TAILORED, min_score=config.match_threshold
+            )
+            if not rows:
+                rows = db.get_jobs(
+                    state=JobState.SCORED, min_score=config.match_threshold
+                )
+            if not rows:
+                console.print(
+                    "[yellow]No jobs ready to apply. Run 'job-boo search' first.[/yellow]"
+                )
+                return
+            matches = [db.row_to_match(r) for r in rows]
+            batch_apply(
+                matches,
+                db,
+                confirm=confirm,
+                delay=config.apply.delay_between_applications,
+            )
 
 
 @main.command(name="all")
@@ -754,7 +763,6 @@ def run_all(
     from job_boo.tailor.tailorer import tailor_for_job
 
     ai = get_provider(config.ai)
-    db = JobDB()
 
     # Step 1: Parse resume
     console.print("\n[bold]Step 1/4: Parsing resume...[/bold]")
@@ -764,12 +772,9 @@ def run_all(
     # Step 2: Search
     console.print(f"\n[bold]Step 2/4: Searching for '{config.job_title}'...[/bold]")
     jobs = search_all_sources(config, max_days=days)
-    for job in jobs:
-        db.upsert_job(job)
 
     if not jobs:
         console.print("[red]No jobs found.[/red]")
-        db.close()
         return
 
     # Step 3: Score
@@ -781,50 +786,62 @@ def run_all(
 
     console.print(f"\n[bold]Step 3/4: Scoring {len(jobs)} jobs...[/bold]")
     matches = score_jobs(resume, jobs, ai, config)
-    for match in matches:
-        db.update_score(match.job.dedup_key(), match)
 
-    above = [m for m in matches if m.final_score >= config.match_threshold]
-    _display_results(above, config.match_threshold)
+    with JobDB() as db:
+        for job in jobs:
+            db.upsert_job(job)
+        for match in matches:
+            db.update_score(match.job.dedup_key(), match)
 
-    if not above:
-        console.print(
-            "[yellow]No jobs above threshold. Try lowering match_threshold.[/yellow]"
-        )
-        db.close()
-        return
+        above = [m for m in matches if m.final_score >= config.match_threshold]
+        _display_results(above, config.match_threshold)
 
-    # Step 4: Tailor top matches
-    console.print(
-        f"\n[bold]Step 4/4: Tailoring resumes for top {min(len(above), 10)} matches...[/bold]"
-    )
-    for match in above[:10]:
-        try:
-            resume_path, cover_path = tailor_for_job(
-                resume, match, ai, config.output_dir, config.apply.include_cover_letter
+        if not above:
+            console.print(
+                "[yellow]No jobs above threshold. Try lowering match_threshold.[/yellow]"
             )
-            # Update DB
-            rows = db.get_jobs(min_score=0, limit=1000)
-            for r in rows:
-                if r["dedup_key"] == match.job.dedup_key():
+            return
+
+        # Step 4: Tailor top matches
+        console.print(
+            f"\n[bold]Step 4/4: Tailoring resumes for top {min(len(above), 10)} matches...[/bold]"
+        )
+        # Build lookup dict to avoid O(n*m) per-match DB query
+        rows = db.get_jobs(min_score=0, limit=10000)
+        row_by_dedup = {r["dedup_key"]: r for r in rows}
+
+        for match in above[:10]:
+            try:
+                resume_path, cover_path = tailor_for_job(
+                    resume,
+                    match,
+                    ai,
+                    config.output_dir,
+                    config.apply.include_cover_letter,
+                )
+                # Update DB
+                row = row_by_dedup.get(match.job.dedup_key())
+                if row:
                     db.update_state(
-                        r["id"],
+                        row["id"],
                         JobState.TAILORED,
                         tailored_resume_path=resume_path,
                         cover_letter_path=cover_path,
                     )
-                    break
-        except Exception as e:
-            console.print(f"  [red]Error tailoring for {match.job.company}: {e}[/red]")
+            except Exception as e:
+                console.print(
+                    f"  [red]Error tailoring for {match.job.company}: {e}[/red]"
+                )
 
-    # Apply
-    confirm = config.apply.confirm_before_submit and not no_confirm
-    if click.confirm(f"\nReady to apply to {len(above)} jobs?", default=True):
-        batch_apply(
-            above, db, confirm=confirm, delay=config.apply.delay_between_applications
-        )
-
-    db.close()
+        # Apply
+        confirm = config.apply.confirm_before_submit and not no_confirm
+        if click.confirm(f"\nReady to apply to {len(above)} jobs?", default=True):
+            batch_apply(
+                above,
+                db,
+                confirm=confirm,
+                delay=config.apply.delay_between_applications,
+            )
 
 
 @main.command()
@@ -837,9 +854,9 @@ def jobs(state: str | None, min_score: float, limit: int) -> None:
     """List tracked jobs with scores."""
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-    job_state = JobState(state) if state else None
-    rows = db.get_jobs(state=job_state, min_score=min_score, limit=limit)
+    with JobDB() as db:
+        job_state = JobState(state) if state else None
+        rows = db.get_jobs(state=job_state, min_score=min_score, limit=limit)
 
     if not rows:
         console.print("[yellow]No jobs found. Run 'job-boo search' first.[/yellow]")
@@ -869,7 +886,6 @@ def jobs(state: str | None, min_score: float, limit: int) -> None:
         )
 
     console.print(table)
-    db.close()
 
 
 @main.command()
@@ -877,10 +893,11 @@ def status() -> None:
     """Show pipeline dashboard with stats."""
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-    stats = db.get_stats()
+    with JobDB() as db:
+        stats = db.get_stats()
 
-    if not stats:
+    total = sum(stats.values()) if stats else 0
+    if total == 0:
         console.print(
             "[yellow]No data yet. Run 'job-boo search' to get started.[/yellow]"
         )
@@ -891,16 +908,13 @@ def status() -> None:
     table.add_column("State")
     table.add_column("Count", justify="right")
 
-    total = 0
     for state_val in [s.value for s in JobState]:
         count = stats.get(state_val, 0)
         if count > 0:
             table.add_row(state_val.upper(), str(count))
-            total += count
 
     table.add_row("[bold]TOTAL[/bold]", f"[bold]{total}[/bold]")
     console.print(table)
-    db.close()
 
 
 @main.command()
@@ -910,13 +924,13 @@ def show(job_id: int) -> None:
     from rich.panel import Panel
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-    row = db.get_job_by_id(job_id)
+    with JobDB() as db:
+        row = db.get_job_by_id(job_id)
+
     if not row:
         console.print(
             f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
         )
-        db.close()
         return
 
     import json
@@ -977,7 +991,6 @@ def show(job_id: int) -> None:
 
     panel = Panel("\n".join(lines), title=f"Job #{job_id}", border_style="cyan")
     console.print(panel)
-    db.close()
 
 
 @main.command()
@@ -987,33 +1000,30 @@ def note(job_id: int, text: str | None) -> None:
     """Add or view notes for a job. If no text is provided, shows current notes."""
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-    row = db.get_job_by_id(job_id)
-    if not row:
-        console.print(
-            f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
-        )
-        db.close()
-        return
-
-    if text is None:
-        current_notes = row.get("notes") or ""
-        if current_notes:
+    with JobDB() as db:
+        row = db.get_job_by_id(job_id)
+        if not row:
             console.print(
-                f"[bold]Notes for Job #{job_id}[/bold] ({row['company']} - {row['title']}):"
+                f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
             )
-            console.print(f"  {current_notes}")
+            return
+
+        if text is None:
+            current_notes = row.get("notes") or ""
+            if current_notes:
+                console.print(
+                    f"[bold]Notes for Job #{job_id}[/bold] ({row['company']} - {row['title']}):"
+                )
+                console.print(f"  {current_notes}")
+            else:
+                console.print(
+                    f"[yellow]No notes for Job #{job_id}. Use 'job-boo note {job_id} \"your note\"' to add one.[/yellow]"
+                )
         else:
+            db.update_notes(job_id, text)
             console.print(
-                f"[yellow]No notes for Job #{job_id}. Use 'job-boo note {job_id} \"your note\"' to add one.[/yellow]"
+                f"[green]Note saved for Job #{job_id} ({row['company']} - {row['title']}).[/green]"
             )
-    else:
-        db.update_notes(job_id, text)
-        console.print(
-            f"[green]Note saved for Job #{job_id} ({row['company']} - {row['title']}).[/green]"
-        )
-
-    db.close()
 
 
 @main.command()
@@ -1032,17 +1042,16 @@ def prep(job_id: int) -> None:
     from job_boo.resume.parser import parse_resume
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-    row = db.get_job_by_id(job_id)
-    if not row:
-        console.print(
-            f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
-        )
-        db.close()
-        return
+    with JobDB() as db:
+        row = db.get_job_by_id(job_id)
+        if not row:
+            console.print(
+                f"[red]Job ID {job_id} not found. Run 'job-boo jobs' to see available IDs.[/red]"
+            )
+            return
+        job = db.row_to_job(row)
 
     ai = get_provider(config.ai)
-    job = db.row_to_job(row)
 
     console.print("\n[bold]Parsing resume...[/bold]")
     resume = parse_resume(config.resume_path, ai)
@@ -1067,7 +1076,6 @@ def prep(job_id: int) -> None:
     out_path = out_dir / f"prep_{safe_company}_{safe_title}.txt"
     out_path.write_text(prep_text)
     console.print(f"\n[green]Saved to {out_path}[/green]")
-    db.close()
 
 
 @main.command()
@@ -1115,39 +1123,38 @@ def watch(
         )
 
     def run_once() -> None:
-        db = JobDB()
-        existing_keys = db.get_all_dedup_keys()
+        with JobDB() as db:
+            existing_keys = db.get_all_dedup_keys()
 
-        console.print(f"\n[bold]Searching for '{config.job_title}'...[/bold]")
-        jobs = search_all_sources(config)
+            console.print(f"\n[bold]Searching for '{config.job_title}'...[/bold]")
+            jobs = search_all_sources(config)
 
-        # Filter to only new jobs
-        new_jobs = [j for j in jobs if j.dedup_key() not in existing_keys]
+            # Filter to only new jobs
+            new_jobs = [j for j in jobs if j.dedup_key() not in existing_keys]
 
-        if not new_jobs:
-            console.print("[dim]No new jobs found since last run.[/dim]")
-            db.close()
-            return
+            if not new_jobs:
+                console.print("[dim]No new jobs found since last run.[/dim]")
+                return
 
-        console.print(
-            f"[green]{len(new_jobs)} new jobs found[/green] (out of {len(jobs)} total)"
-        )
+            console.print(
+                f"[green]{len(new_jobs)} new jobs found[/green] (out of {len(jobs)} total)"
+            )
 
-        # Save all jobs to DB
-        for job in jobs:
-            db.upsert_job(job)
+            # Save all jobs to DB
+            for job in jobs:
+                db.upsert_job(job)
 
-        # Score only the new ones
-        # Show cost estimate before AI scoring
-        estimated_cost = len(new_jobs) * 0.003  # ~$0.003 per job for scoring
-        console.print(
-            f"[dim]Estimated AI scoring cost: ~${estimated_cost:.2f} for {len(new_jobs)} jobs[/dim]"
-        )
+            # Score only the new ones
+            # Show cost estimate before AI scoring
+            estimated_cost = len(new_jobs) * 0.003  # ~$0.003 per job for scoring
+            console.print(
+                f"[dim]Estimated AI scoring cost: ~${estimated_cost:.2f} for {len(new_jobs)} jobs[/dim]"
+            )
 
-        console.print(f"[bold]Scoring {len(new_jobs)} new jobs...[/bold]")
-        matches = score_jobs(resume, new_jobs, ai, config)
-        for match in matches:
-            db.update_score(match.job.dedup_key(), match)
+            console.print(f"[bold]Scoring {len(new_jobs)} new jobs...[/bold]")
+            matches = score_jobs(resume, new_jobs, ai, config)
+            for match in matches:
+                db.update_score(match.job.dedup_key(), match)
 
         above = [m for m in matches if m.final_score >= config.match_threshold]
 
@@ -1182,8 +1189,6 @@ def watch(
             except Exception as e:
                 console.print(f"[red]Webhook failed: {e}[/red]")
 
-        db.close()
-
     if once:
         run_once()
         return
@@ -1210,15 +1215,15 @@ def analytics() -> None:
 
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-    stats = db.get_stats()
-    all_jobs = db.get_all_jobs()
+    with JobDB() as db:
+        stats = db.get_stats()
+        all_jobs = db.get_all_jobs()
+        daily = db.get_applied_per_day(days=30)
 
     if not all_jobs:
         console.print(
             "[yellow]No data yet. Run 'job-boo search' to get started.[/yellow]"
         )
-        db.close()
         return
 
     # Counts by state
@@ -1309,7 +1314,6 @@ def analytics() -> None:
         console.print(gap_table)
 
     # Jobs applied per day (last 30 days)
-    daily = db.get_applied_per_day(days=30)
     if daily:
         console.print()
         daily_table = RichTable(title="Applications Per Day (Last 30 Days)")
@@ -1320,7 +1324,6 @@ def analytics() -> None:
         console.print(daily_table)
 
     console.print()
-    db.close()
 
 
 @main.command()
@@ -1352,26 +1355,23 @@ def cleanup(days: int, dry_run: bool) -> None:
     """Remove expired jobs (found/scored only, not applied/tailored)."""
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-
-    if dry_run:
-        rows = db.conn.execute(
-            """SELECT COUNT(*) as cnt FROM jobs
-            WHERE state IN ('found', 'scored')
-                AND DATE(updated_at) < DATE('now', ?)""",
-            (f"-{days} days",),
-        ).fetchone()
-        count = rows["cnt"] if rows else 0
-        console.print(
-            f"[yellow]Dry run: {count} jobs in found/scored state older than {days} days would be deleted.[/yellow]"
-        )
-    else:
-        deleted = db.cleanup_expired(days=days)
-        console.print(
-            f"[green]Cleaned up {deleted} expired jobs (older than {days} days).[/green]"
-        )
-
-    db.close()
+    with JobDB() as db:
+        if dry_run:
+            rows = db.conn.execute(
+                """SELECT COUNT(*) as cnt FROM jobs
+                WHERE state IN ('found', 'scored')
+                    AND DATE(updated_at) < DATE('now', ?)""",
+                (f"-{days} days",),
+            ).fetchone()
+            count = rows["cnt"] if rows else 0
+            console.print(
+                f"[yellow]Dry run: {count} jobs in found/scored state older than {days} days would be deleted.[/yellow]"
+            )
+        else:
+            deleted = db.cleanup_expired(days=days)
+            console.print(
+                f"[green]Cleaned up {deleted} expired jobs (older than {days} days).[/green]"
+            )
 
 
 @main.command()
@@ -1385,82 +1385,81 @@ def history(company: str | None, days: int | None) -> None:
 
     from job_boo.storage.db import JobDB
 
-    db = JobDB()
-
-    if company:
-        rows = db.get_company_history(company=company)
-        if not rows:
-            console.print(f"[yellow]No jobs found for company '{company}'.[/yellow]")
-            db.close()
-            return
-        table = RichTable(title=f"History for '{company}'")
-        table.add_column("Company", style="bold")
-        table.add_column("Jobs", justify="right")
-        table.add_column("Applied", justify="right")
-        table.add_column("Avg Score", justify="right")
-        table.add_column("Last Applied")
-        table.add_column("States")
-        for r in rows:
-            table.add_row(
-                r["company"],
-                str(r["job_count"]),
-                str(r["applied_count"]),
-                f"{r['avg_score']:.1f}" if r["avg_score"] else "N/A",
-                r["latest_applied_at"] or "N/A",
-                r["states"] or "",
-            )
-        console.print(table)
-    elif days:
-        from datetime import datetime, timedelta
-
-        end = datetime.now().strftime("%Y-%m-%d")
-        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        rows = db.get_jobs_by_date_range(start, end, state="applied")
-        console.print(
-            f"\n[bold]Applications in last {days} days ({start} to {end}):[/bold] {len(rows)}\n"
-        )
-        if rows:
-            table = RichTable()
-            table.add_column("Date")
+    with JobDB() as db:
+        if company:
+            rows = db.get_company_history(company=company)
+            if not rows:
+                console.print(
+                    f"[yellow]No jobs found for company '{company}'.[/yellow]"
+                )
+                return
+            table = RichTable(title=f"History for '{company}'")
             table.add_column("Company", style="bold")
-            table.add_column("Title")
-            table.add_column("Score", justify="right")
+            table.add_column("Jobs", justify="right")
+            table.add_column("Applied", justify="right")
+            table.add_column("Avg Score", justify="right")
+            table.add_column("Last Applied")
+            table.add_column("States")
             for r in rows:
-                score = r.get("final_score") or 0
                 table.add_row(
-                    (r.get("applied_at") or r.get("created_at") or "")[:10],
                     r["company"],
-                    r["title"],
-                    f"{score:.0f}%",
+                    str(r["job_count"]),
+                    str(r["applied_count"]),
+                    f"{r['avg_score']:.1f}" if r["avg_score"] else "N/A",
+                    r["latest_applied_at"] or "N/A",
+                    r["states"] or "",
                 )
             console.print(table)
-    else:
-        # Default: show all companies summary
-        rows = db.get_company_history()
-        if not rows:
-            console.print("[yellow]No data yet. Run 'job-boo search' first.[/yellow]")
-            db.close()
-            return
-        table = RichTable(title="Company Summary")
-        table.add_column("Company", style="bold")
-        table.add_column("Jobs", justify="right")
-        table.add_column("Applied", justify="right")
-        table.add_column("Avg Score", justify="right")
-        table.add_column("Last Applied")
-        for r in rows[:30]:
-            table.add_row(
-                r["company"][:35],
-                str(r["job_count"]),
-                str(r["applied_count"]),
-                f"{r['avg_score']:.1f}" if r["avg_score"] else "N/A",
-                r["latest_applied_at"] or "—",
+        elif days:
+            from datetime import datetime, timedelta
+
+            end = datetime.now().strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+            rows = db.get_jobs_by_date_range(start, end, state="applied")
+            console.print(
+                f"\n[bold]Applications in last {days} days ({start} to {end}):[/bold] {len(rows)}\n"
             )
-        console.print(table)
+            if rows:
+                table = RichTable()
+                table.add_column("Date")
+                table.add_column("Company", style="bold")
+                table.add_column("Title")
+                table.add_column("Score", justify="right")
+                for r in rows:
+                    score = r.get("final_score") or 0
+                    table.add_row(
+                        (r.get("applied_at") or r.get("created_at") or "")[:10],
+                        r["company"],
+                        r["title"],
+                        f"{score:.0f}%",
+                    )
+                console.print(table)
+        else:
+            # Default: show all companies summary
+            rows = db.get_company_history()
+            if not rows:
+                console.print(
+                    "[yellow]No data yet. Run 'job-boo search' first.[/yellow]"
+                )
+                return
+            table = RichTable(title="Company Summary")
+            table.add_column("Company", style="bold")
+            table.add_column("Jobs", justify="right")
+            table.add_column("Applied", justify="right")
+            table.add_column("Avg Score", justify="right")
+            table.add_column("Last Applied")
+            for r in rows[:30]:
+                table.add_row(
+                    r["company"][:35],
+                    str(r["job_count"]),
+                    str(r["applied_count"]),
+                    f"{r['avg_score']:.1f}" if r["avg_score"] else "N/A",
+                    r["latest_applied_at"] or "---",
+                )
+            console.print(table)
 
-    db.close()
 
-
-def _display_results(matches: list, threshold: int) -> None:
+def _display_results(matches: list[MatchResult], threshold: int) -> None:
     """Display scored results in a rich table."""
     if not matches:
         console.print(f"\n[yellow]No jobs scored above {threshold}%.[/yellow]")

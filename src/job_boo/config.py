@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import click
 import yaml
@@ -121,23 +121,17 @@ class Config:
     profiles: dict[str, dict] = field(default_factory=dict)
 
 
-def _get_nested(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
-    current = data
-    for key in keys:
-        if not isinstance(current, dict):
-            return default
-        current = current.get(key, default)
-    return current
-
-
 def load_config(path: Path | None = None) -> Config:
     """Load config from YAML file, with env var fallbacks."""
     config_path = path or CONFIG_PATH
     if not config_path.exists():
         return Config()
 
-    with open(config_path) as f:
-        data = yaml.safe_load(f) or {}
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f) or {}
+    except yaml.YAMLError as e:
+        raise click.ClickException(f"Invalid config file: {e}")
 
     sources_data = data.get("sources", {})
     serpapi_data = sources_data.get("serpapi", {})
@@ -228,7 +222,8 @@ def apply_profile(config: Config, profile_name: str) -> Config:
 def ensure_dirs(config: Config) -> None:
     """Create necessary directories."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(
-        CONFIG_DIR, 0o700
-    )  # nosemgrep: insecure-file-permissions — owner-only dir for secrets
+    if sys.platform != "win32":
+        os.chmod(
+            CONFIG_DIR, 0o700
+        )  # nosemgrep: insecure-file-permissions — owner-only dir for secrets
     Path(config.output_dir).expanduser().mkdir(parents=True, exist_ok=True)

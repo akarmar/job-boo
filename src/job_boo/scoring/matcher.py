@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from rich.console import Console
 from rich.progress import track
 
@@ -15,6 +17,31 @@ console = Console()
 KEYWORD_THRESHOLD = 20
 
 
+def _skill_in_text(skill: str, text: str) -> bool:
+    """Check if skill appears in text, using word boundaries for short terms."""
+    if len(skill) <= 3:
+        return bool(re.search(r"\b" + re.escape(skill) + r"\b", text))
+    return skill in text
+
+
+def _trim_description(description: str, max_chars: int = 3000) -> str:
+    """Truncate description, preferring requirements sections."""
+    if len(description) <= max_chars:
+        return description
+    lower = description.lower()
+    for marker in [
+        "requirements",
+        "qualifications",
+        "what you'll need",
+        "what we're looking for",
+    ]:
+        idx = lower.find(marker)
+        if idx != -1:
+            start = max(0, idx - 200)
+            return description[start : start + max_chars]
+    return description[:max_chars]
+
+
 def keyword_score(resume: Resume, job: Job) -> float:
     """Fast keyword overlap score (0-100) using Jaccard similarity."""
     resume_skills = {s.lower().strip() for s in resume.skills}
@@ -26,7 +53,7 @@ def keyword_score(resume: Resume, job: Job) -> float:
     matched = 0
     for skill in resume_skills:
         # Check for the skill or common variations
-        if skill in job_text:
+        if _skill_in_text(skill, job_text):
             matched += 1
         elif len(skill) > 3 and any(
             variant in job_text
@@ -38,8 +65,6 @@ def keyword_score(resume: Resume, job: Job) -> float:
         ):
             matched += 1
 
-    if not resume_skills:
-        return 0
     return (matched / len(resume_skills)) * 100
 
 

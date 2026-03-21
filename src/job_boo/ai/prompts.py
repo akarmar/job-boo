@@ -23,10 +23,10 @@ Consider:
 
 Return ONLY valid JSON:
 {
-    "score": 0-100,
+    "score": 75,
     "matched_skills": ["skills from resume that match job requirements"],
     "missing_skills": ["required skills the candidate lacks"],
-    "reasoning": "2-3 sentence explanation of the score"
+    "reasoning": "2-3 sentence explanation of the score (integer between 0 and 100)"
 }
 
 Scoring guide:

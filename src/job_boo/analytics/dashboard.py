@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import Counter
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -349,7 +350,14 @@ def _build_table_html(title: str, headers: list[str], rows: list[list[str]]) -> 
 def _escape(text: str | None) -> str:
     if text is None:
         return ""
-    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#x27;")
+    )
 
 
 def _build_html(
@@ -639,8 +647,7 @@ def generate_dashboard(
     resolved_output = output_path or (OUTPUT_DIR / "dashboard.html")
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = _connect(resolved_db)
-    try:
+    with closing(_connect(resolved_db)) as conn:
         state_counts = _query_state_counts(conn)
         funnel = _query_funnel(state_counts)
         daily_apps = _query_daily_applications(conn)
@@ -651,8 +658,6 @@ def generate_dashboard(
         company_history = _query_company_history(conn)
         recent_apps = _query_recent_applications(conn)
         stats = _query_stats(conn, state_counts)
-    finally:
-        conn.close()
 
     html = _build_html(
         stats=stats,

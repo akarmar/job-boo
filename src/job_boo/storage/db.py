@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Generator
 
 from job_boo.config import DB_PATH
 from job_boo.models import Job, JobState, MatchResult
@@ -58,12 +61,38 @@ class JobDB:
         self.db_path = db_path or DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(self.db_path))
-        os.chmod(self.db_path, 0o600)
+        if sys.platform != "win32":
+            os.chmod(self.db_path, 0o600)
+        self._in_batch: bool = False
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
 
+    def __enter__(self) -> JobDB:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        self.close()
+
     def close(self) -> None:
         self.conn.close()
+
+    @contextmanager
+    def batch(self) -> Generator[None, None, None]:
+        """Batch multiple operations into a single transaction."""
+        self._in_batch = True
+        try:
+            yield
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        finally:
+            self._in_batch = False
 
     def upsert_job(self, job: Job) -> int:
         """Insert or update a job. Returns the row ID."""
@@ -94,7 +123,8 @@ class JobDB:
                 json.dumps(job.raw_data),
             ),
         )
-        self.conn.commit()
+        if not self._in_batch:
+            self.conn.commit()
         return cursor.lastrowid or 0
 
     def update_score(self, dedup_key: str, match: MatchResult) -> None:
@@ -118,7 +148,8 @@ class JobDB:
                 dedup_key,
             ),
         )
-        self.conn.commit()
+        if not self._in_batch:
+            self.conn.commit()
 
     def update_state(self, db_id: int, state: JobState, **kwargs: str) -> None:
         self.conn.execute(
@@ -139,14 +170,16 @@ class JobDB:
                 db_id,
             ),
         )
-        self.conn.commit()
+        if not self._in_batch:
+            self.conn.commit()
 
     def update_notes(self, db_id: int, notes: str) -> None:
         self.conn.execute(
             "UPDATE jobs SET notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (notes, db_id),
         )
-        self.conn.commit()
+        if not self._in_batch:
+            self.conn.commit()
 
     def get_jobs(
         self,
@@ -166,6 +199,12 @@ class JobDB:
 
     def get_job_by_id(self, db_id: int) -> dict | None:
         row = self.conn.execute("SELECT * FROM jobs WHERE id = ?", (db_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_job_by_dedup_key(self, dedup_key: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM jobs WHERE dedup_key = ?", (dedup_key,)
+        ).fetchone()
         return dict(row) if row else None
 
     def get_stats(self) -> dict[str, int]:

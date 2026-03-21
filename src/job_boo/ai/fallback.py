@@ -27,7 +27,7 @@ KNOWN_SKILLS = {
     "kotlin",
     "scala",
     "perl",
-    "r",
+    "r language",
     "matlab",
     "react",
     "angular",

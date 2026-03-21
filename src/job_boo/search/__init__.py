@@ -83,7 +83,7 @@ def filter_by_company(jobs: list[Job], config: Config) -> list[Job]:
 
     filtered: list[Job] = []
     for job in jobs:
-        company_lower = job.company.lower().strip()
+        company_lower = (job.company or "").lower().strip()
         if company_lower in blacklist:
             continue
         if whitelist and company_lower not in whitelist:

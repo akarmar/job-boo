@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Union
-
 import click
 import fitz  # pymupdf
 
@@ -20,7 +18,18 @@ def extract_text_from_pdf(pdf_path: str | Path) -> str:
     if not path.exists():
         raise FileNotFoundError(f"Resume not found: {path}")
 
-    doc = fitz.open(str(path))
+    try:
+        doc = fitz.open(str(path))
+    except Exception as e:
+        raise ValueError(f"Cannot open PDF {path}: {e}") from e
+
+    if doc.is_encrypted:
+        doc.close()
+        raise ValueError(
+            f"PDF is encrypted/password-protected: {path}. "
+            "Please provide an unprotected PDF."
+        )
+
     text_parts: list[str] = []
     for page in doc:
         text_parts.append(page.get_text())
@@ -30,7 +39,7 @@ def extract_text_from_pdf(pdf_path: str | Path) -> str:
 
 def parse_resume(
     pdf_path: str | Path,
-    ai: Union[AIProvider, FallbackProvider],
+    ai: AIProvider | FallbackProvider,
 ) -> Resume:
     """Parse a PDF resume and extract structured data using AI (or fallback)."""
     if not pdf_path or str(pdf_path).strip() in ("", "."):
@@ -44,8 +53,18 @@ def parse_resume(
 
     try:
         resume = ai.extract_skills(raw_text)
-    except (json.JSONDecodeError, Exception):
-        # Fallback to keyword extraction if AI response is malformed
+    except json.JSONDecodeError as e:
+        import logging
+
+        logging.warning(f"AI returned malformed JSON, using fallback: {e}")
+        fallback = FallbackProvider()
+        resume = fallback.extract_skills(raw_text)
+    except Exception as e:
+        import logging
+
+        logging.warning(
+            f"AI extraction failed ({type(e).__name__}: {e}), using fallback"
+        )
         fallback = FallbackProvider()
         resume = fallback.extract_skills(raw_text)
 

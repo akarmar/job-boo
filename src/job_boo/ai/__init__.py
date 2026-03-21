@@ -23,7 +23,7 @@ def get_provider(config: AIConfig) -> AIProvider:
             "(keyword-only matching, no tailoring).[/yellow]\n"
             "[dim]Run 'job-boo setup-ai' to enable AI-powered features.[/dim]\n"
         )
-        return FallbackProvider()  # type: ignore[return-value]
+        return FallbackProvider()
     if config.provider == "openai":
         return OpenAIProvider(api_key=key, model=model)
     return ClaudeProvider(api_key=key, model=model)

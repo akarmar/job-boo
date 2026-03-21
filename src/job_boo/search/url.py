@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 import httpx
 from bs4 import BeautifulSoup
 
@@ -10,6 +12,12 @@ from job_boo.models import Job
 
 def parse_job_url(url: str) -> Job:
     """Fetch a job listing URL and extract job details."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme!r}")
+    if not parsed.hostname:
+        raise ValueError("Invalid URL: no hostname")
+
     resp = httpx.get(
         url,
         follow_redirects=True,
@@ -33,7 +41,7 @@ def parse_job_url(url: str) -> Job:
             title = el.get_text(strip=True)
             break
     if not title:
-        title = soup.title.string if soup.title else ""
+        title = (soup.title.string if soup.title and soup.title.string else "") or ""
 
     # Extract company
     company = ""

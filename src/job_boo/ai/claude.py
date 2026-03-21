@@ -13,6 +13,7 @@ from job_boo.ai.prompts import (
     SKILL_EXTRACTION_PROMPT,
     TAILOR_RESUME_PROMPT,
 )
+from job_boo.ai.utils import extract_json
 from job_boo.models import Job, MatchResult, Resume
 
 
@@ -22,30 +23,45 @@ class ClaudeProvider:
         self.model = model
 
     def _ask(self, system: str, user: str, max_tokens: int = 4096) -> str:
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+        except anthropic.AuthenticationError:
+            raise SystemExit("Invalid API key. Run job-boo setup-ai")
+        except anthropic.RateLimitError:
+            raise RuntimeError("Rate limit hit. Wait and retry.")
+        except anthropic.APIError as exc:
+            raise RuntimeError(str(exc))
+        if not response.content:
+            raise ValueError("AI returned an empty response")
         return response.content[0].text
 
     def extract_skills(self, resume_text: str) -> Resume:
         raw = self._ask(SKILL_EXTRACTION_PROMPT, resume_text)
-        data = json.loads(_extract_json(raw))
+        try:
+            data = json.loads(extract_json(raw))
+        except json.JSONDecodeError:
+            raise ValueError("AI returned invalid JSON for skill extraction")
         return Resume(
             raw_text=resume_text,
             skills=data.get("skills", []),
-            experience_years=data.get("experience_years", 0),
+            experience_years=int(data.get("experience_years", 0)),
             job_titles=data.get("job_titles", []),
             education=data.get("education", []),
             summary=data.get("summary", ""),
         )
 
     def score_match(self, resume: Resume, job: Job) -> MatchResult:
-        user_msg = f"RESUME SKILLS: {json.dumps(resume.skills)}\n\nRESUME SUMMARY: {resume.summary}\n\nJOB TITLE: {job.title}\nCOMPANY: {job.company}\nJOB DESCRIPTION:\n{job.description[:4000]}"
+        user_msg = f"RESUME SKILLS: {json.dumps(resume.skills[:30])}\n\nRESUME SUMMARY: {resume.summary}\n\nJOB TITLE: {job.title}\nCOMPANY: {job.company}\nJOB DESCRIPTION:\n{job.description[:4000]}"
         raw = self._ask(SCORE_MATCH_PROMPT, user_msg)
-        data = json.loads(_extract_json(raw))
+        try:
+            data = json.loads(extract_json(raw))
+        except json.JSONDecodeError:
+            raise ValueError("AI returned invalid JSON for score matching")
         return MatchResult(
             job=job,
             keyword_score=0,  # filled by keyword pass
@@ -58,7 +74,7 @@ class ClaudeProvider:
 
     def tailor_resume(self, resume: Resume, job: Job, match: MatchResult) -> str:
         user_msg = (
-            f"ORIGINAL RESUME:\n{resume.raw_text}\n\n"
+            f"ORIGINAL RESUME:\n{resume.raw_text[:8000]}\n\n"
             f"JOB TITLE: {job.title}\nCOMPANY: {job.company}\n"
             f"JOB DESCRIPTION:\n{job.description[:4000]}\n\n"
             f"MATCHED SKILLS: {json.dumps(match.matched_skills)}\n"
@@ -81,18 +97,9 @@ class ClaudeProvider:
     def prep_interview(self, resume: Resume, job: Job) -> str:
         user_msg = (
             f"CANDIDATE RESUME:\n{resume.raw_text[:4000]}\n\n"
-            f"CANDIDATE SKILLS: {json.dumps(resume.skills)}\n"
+            f"CANDIDATE SKILLS: {json.dumps(resume.skills[:30])}\n"
             f"EXPERIENCE: {resume.experience_years} years\n\n"
             f"JOB TITLE: {job.title}\nCOMPANY: {job.company}\n"
             f"JOB DESCRIPTION:\n{job.description[:4000]}"
         )
         return self._ask(INTERVIEW_PREP_PROMPT, user_msg, max_tokens=8192)
-
-
-def _extract_json(text: str) -> str:
-    """Extract JSON from a response that may contain markdown fences."""
-    if "```json" in text:
-        text = text.split("```json")[1].split("```")[0]
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0]
-    return text.strip()

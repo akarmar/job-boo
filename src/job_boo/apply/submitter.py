@@ -96,15 +96,14 @@ def batch_apply(
         "potentially blocking your IP or flagging your applications.[/yellow]\n"
     )
 
+    # Build lookup dict to avoid O(n*m) per-match DB query
+    rows = db.get_jobs(min_score=0, limit=10000)
+    row_by_dedup = {r["dedup_key"]: r for r in rows}
+
     for i, match in enumerate(matches, 1):
         console.print(f"\n[bold]--- Application {i}/{total} ---[/bold]")
 
-        row = None
-        rows = db.get_jobs(min_score=0, limit=1000)
-        for r in rows:
-            if r["dedup_key"] == match.job.dedup_key():
-                row = r
-                break
+        row = row_by_dedup.get(match.job.dedup_key())
 
         app = Application(
             job=match.job,
