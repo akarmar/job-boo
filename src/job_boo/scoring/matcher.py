@@ -39,6 +39,12 @@ def keyword_score(resume: Resume, job: Job) -> float:
     return (matched / len(resume_skills)) * 100
 
 
+def is_company_blacklisted(job: Job, config: Config) -> bool:
+    """Check if a job's company is on the blacklist."""
+    blacklist = {c.lower() for c in config.companies.blacklist}
+    return job.company.lower().strip() in blacklist
+
+
 def check_filters(job: Job, config: Config) -> tuple[bool, bool]:
     """Check location and sponsorship fit. Returns (location_fit, sponsorship_fit)."""
     # Location check

@@ -39,6 +39,22 @@ sources:
   remotive:
     enabled: true
 
+# Company filters
+companies:
+  blacklist: []   # Skip these companies, e.g. ["Palantir", "Meta"]
+  whitelist: []   # If non-empty, ONLY search these companies
+
+# Named profiles for different job searches
+profiles:
+  # backend:
+  #   job_title: "Senior Backend Engineer"
+  #   keywords: ["python", "distributed systems"]
+  #   resume_path: ~/Documents/resume-backend.pdf
+  # frontend:
+  #   job_title: "Frontend Engineer"
+  #   keywords: ["react", "typescript"]
+  #   resume_path: ~/Documents/resume-frontend.pdf
+
 # Where tailored resumes and cover letters are saved
 output_dir: ~/.job-boo/output/
 

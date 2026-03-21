@@ -140,6 +140,13 @@ class JobDB:
         )
         self.conn.commit()
 
+    def update_notes(self, db_id: int, notes: str) -> None:
+        self.conn.execute(
+            "UPDATE jobs SET notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (notes, db_id),
+        )
+        self.conn.commit()
+
     def get_jobs(
         self,
         state: JobState | None = None,
