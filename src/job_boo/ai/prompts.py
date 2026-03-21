@@ -60,3 +60,17 @@ Rules:
 6. Professional but human tone — not robotic
 
 Return ONLY the cover letter text, no markdown formatting."""
+
+INTERVIEW_PREP_PROMPT = """You are an expert interview coach. Prepare a comprehensive interview preparation guide for this candidate applying to this specific job.
+
+Based on the job description and the candidate's resume, generate:
+
+1. **5 Likely Technical Interview Questions** — specific to the technologies, tools, and domain mentioned in the JD. Include follow-up angles the interviewer might probe.
+
+2. **5 Likely Behavioral Interview Questions** — based on the seniority level, team dynamics, and company culture implied by the JD. Use STAR format hints.
+
+3. **Suggested Talking Points** — for each question above, provide 2-3 bullet points the candidate should mention, drawn directly from their resume experience. Reference specific projects, metrics, or achievements where possible.
+
+4. **Company Research Suggestions** — 5 specific things the candidate should research about the company before the interview (recent news, products, engineering blog, tech stack decisions, culture).
+
+Format your response in clean Markdown with clear headers and bullet points. Be specific and actionable — avoid generic advice."""
