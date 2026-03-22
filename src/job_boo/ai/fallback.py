@@ -84,6 +84,44 @@ KNOWN_SKILLS = {
     "scikit-learn",
     "spark",
     "hadoop",
+    # Data analytics / BI tools
+    "sql",
+    "tableau",
+    "power bi",
+    "looker",
+    "qlik",
+    "snowflake",
+    "redshift",
+    "bigquery",
+    "dbt",
+    "airflow",
+    "sas",
+    "knime",
+    "alteryx",
+    "dataiku",
+    # Analysis skills
+    "excel",
+    "advanced excel",
+    "pivot tables",
+    "vlookup",
+    "data cleaning",
+    "data visualization",
+    "data modeling",
+    "etl",
+    "statistical analysis",
+    "a/b testing",
+    "regression",
+    "forecasting",
+    # Business tools
+    "crm",
+    "salesforce",
+    "sap",
+    "erp",
+    # Reporting
+    "kpi",
+    "dashboard",
+    "reporting",
+    "business intelligence",
     "html",
     "css",
     "sass",
@@ -134,6 +172,7 @@ class FallbackProvider:
         title_patterns = [
             r"(?:senior|staff|lead|principal|junior)?\s*(?:software|backend|frontend|full[- ]?stack|data|devops|platform|site reliability|cloud|ml|machine learning)\s*(?:engineer|developer|architect|scientist|analyst)",
             r"(?:engineering|technical|product)\s*(?:manager|lead|director)",
+            r"(?:senior|lead|junior|associate)?\s*(?:data|business|financial|marketing|operations|systems|research)\s*analyst",
         ]
         for pattern in title_patterns:
             matches = re.findall(pattern, text_lower)

@@ -42,7 +42,7 @@ def _trim_description(description: str, max_chars: int = 3000) -> str:
     return description[:max_chars]
 
 
-def keyword_score(resume: Resume, job: Job) -> float:
+def keyword_score(resume: Resume, job: Job, config: Config | None = None) -> float:
     """Fast keyword overlap score (0-100) using Jaccard similarity."""
     resume_skills = {s.lower().strip() for s in resume.skills}
     if not resume_skills:
@@ -65,7 +65,51 @@ def keyword_score(resume: Resume, job: Job) -> float:
         ):
             matched += 1
 
-    return (matched / len(resume_skills)) * 100
+    base_score = (matched / len(resume_skills)) * 100
+
+    # Title relevance boost: if job title contains the search terms, boost the score
+    if config and config.job_title:
+        title_lower = job.title.lower()
+        search_terms = config.job_title.lower().split()
+        # Also include keywords
+        if config.keywords:
+            for kw in config.keywords:
+                search_terms.extend(kw.lower().split())
+        # Remove common stop words
+        stop_words = {
+            "the",
+            "a",
+            "an",
+            "of",
+            "for",
+            "and",
+            "or",
+            "in",
+            "at",
+            "with",
+            "to",
+            "senior",
+            "junior",
+            "lead",
+            "staff",
+            "principal",
+            "sr",
+            "jr",
+        }
+        search_terms = [t for t in search_terms if t not in stop_words]
+
+        title_words = set(re.findall(r"\w+", title_lower))
+        matching_terms = sum(1 for t in search_terms if t in title_words)
+
+        if search_terms:
+            title_relevance = matching_terms / len(set(search_terms))
+            # Boost up to 15 points for perfect title match, penalize 10 for zero match
+            if title_relevance > 0:
+                base_score = min(100, base_score + title_relevance * 15)
+            else:
+                base_score = max(0, base_score - 10)
+
+    return base_score
 
 
 def is_company_blacklisted(job: Job, config: Config) -> bool:
@@ -113,15 +157,37 @@ def score_jobs(
     ai: AIProvider,
     config: Config,
 ) -> list[MatchResult]:
-    """Score all jobs with two-pass approach: keyword filter then AI scoring."""
+    """Score all jobs with two-pass approach: keyword filter then AI scoring.
+
+    Returns ALL scored jobs (including below-threshold), sorted by score descending.
+    Jobs that fail the keyword pre-filter get a keyword-only score with reasoning.
+    """
     results: list[MatchResult] = []
+    filtered_out: list[MatchResult] = []
 
     # Pass 1: keyword pre-filter
     candidates: list[tuple[Job, float]] = []
     for job in jobs:
-        ks = keyword_score(resume, job)
+        ks = keyword_score(resume, job, config)
         if ks >= KEYWORD_THRESHOLD:
             candidates.append((job, ks))
+        else:
+            # Track filtered jobs with reason
+            location_fit, sponsorship_fit = check_filters(job, config)
+            filtered_out.append(
+                MatchResult(
+                    job=job,
+                    keyword_score=ks,
+                    ai_score=0,
+                    final_score=ks * 0.3,  # keyword-only weighted score
+                    matched_skills=[],
+                    missing_skills=[],
+                    reasoning=f"Failed keyword filter ({ks:.0f}% < {KEYWORD_THRESHOLD}% threshold). "
+                    "Resume skills not found in job description.",
+                    location_fit=location_fit,
+                    sponsorship_fit=sponsorship_fit,
+                )
+            )
 
     console.print(
         f"  Keyword filter: [green]{len(candidates)}[/green]/{len(jobs)} jobs "
@@ -132,7 +198,9 @@ def score_jobs(
         console.print(
             "[yellow]  No jobs passed the keyword filter. Try broader search terms.[/yellow]"
         )
-        return results
+        # Still return the filtered jobs so they can be saved to DB
+        filtered_out.sort(key=lambda m: m.final_score, reverse=True)
+        return filtered_out
 
     # Pass 2: AI scoring
     console.print(f"  AI scoring {len(candidates)} candidates...")
@@ -151,6 +219,7 @@ def score_jobs(
                 f"  [red]Error scoring {job.company} - {job.title}: {e}[/red]"
             )
 
-    # Sort by final score descending
-    results.sort(key=lambda m: m.final_score, reverse=True)
-    return results
+    # Combine AI-scored results with keyword-filtered jobs
+    all_results = results + filtered_out
+    all_results.sort(key=lambda m: m.final_score, reverse=True)
+    return all_results

@@ -9,16 +9,51 @@ import httpx
 from job_boo.config import Config
 from job_boo.models import Job
 
+_CAT_ENGINEERING = "Engineering"
+_CAT_DATA_SCIENCE = "Data Science"
+_CAT_DESIGN = "Design"
+_CAT_FINANCE = "Finance"
+_CAT_HR = "HR"
+
 MUSE_CATEGORIES = {
-    "software engineer": "Engineering",
-    "data scientist": "Data Science",
+    "software engineer": _CAT_ENGINEERING,
+    "software developer": _CAT_ENGINEERING,
+    "backend engineer": _CAT_ENGINEERING,
+    "frontend engineer": _CAT_ENGINEERING,
+    "full stack": _CAT_ENGINEERING,
+    "devops": _CAT_ENGINEERING,
+    "sre": _CAT_ENGINEERING,
+    "data scientist": _CAT_DATA_SCIENCE,
+    "data analyst": _CAT_DATA_SCIENCE,
+    "data engineer": _CAT_DATA_SCIENCE,
+    "business analyst": _CAT_DATA_SCIENCE,
+    "machine learning": _CAT_DATA_SCIENCE,
+    "analyst": _CAT_DATA_SCIENCE,
     "product manager": "Product",
-    "designer": "Design",
+    "project manager": "Project Management",
+    "designer": _CAT_DESIGN,
+    "ux": _CAT_DESIGN,
+    "ui": _CAT_DESIGN,
     "marketing": "Marketing",
     "sales": "Sales",
-    "finance": "Finance",
+    "finance": _CAT_FINANCE,
+    "accounting": _CAT_FINANCE,
     "operations": "Operations",
+    "hr": _CAT_HR,
+    "human resources": _CAT_HR,
 }
+
+
+def _resolve_muse_category(config: Config) -> str | None:
+    """Map job title or keywords to a Muse API category."""
+    search_terms = [config.job_title.lower()]
+    search_terms.extend(kw.lower() for kw in config.keywords)
+
+    for term in search_terms:
+        for keyword, category in MUSE_CATEGORIES.items():
+            if keyword in term:
+                return category
+    return None
 
 
 def search_themuse(config: Config) -> list[Job]:
@@ -28,12 +63,9 @@ def search_themuse(config: Config) -> list[Job]:
         "descending": "true",
     }
 
-    # Map job title to Muse category
-    title_lower = config.job_title.lower()
-    for keyword, category in MUSE_CATEGORIES.items():
-        if keyword in title_lower:
-            params["category"] = category
-            break
+    category = _resolve_muse_category(config)
+    if category:
+        params["category"] = category
 
     if config.location.city:
         params["location"] = config.location.city

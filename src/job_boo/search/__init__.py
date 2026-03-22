@@ -97,6 +97,41 @@ def filter_by_company(jobs: list[Job], config: Config) -> list[Job]:
     return filtered
 
 
+_STOP_WORDS = frozenset(
+    {"the", "a", "an", "of", "for", "and", "or", "in", "at", "with", "to"}
+)
+
+
+def _tokenize(text: str) -> set[str]:
+    """Split text into lowercase words, excluding stop words."""
+    return {w for w in re.findall(r"[a-z]+", text.lower()) if w not in _STOP_WORDS}
+
+
+def filter_by_title_relevance(jobs: list[Job], config: Config) -> list[Job]:
+    """Remove jobs whose titles share zero meaningful terms with the search query."""
+    relevant_terms: set[str] = _tokenize(config.job_title)
+    for kw in config.keywords:
+        relevant_terms |= _tokenize(kw)
+
+    if not relevant_terms:
+        return jobs
+
+    filtered: list[Job] = []
+    for job in jobs:
+        title_terms = _tokenize(job.title or "")
+        if title_terms & relevant_terms:
+            filtered.append(job)
+
+    removed = len(jobs) - len(filtered)
+    if removed > 0:
+        console.print(
+            f"  Title relevance filter: removed [yellow]{removed}/{len(jobs)}[/yellow]"
+            f" jobs (titles unrelated to [cyan]{config.job_title!r}[/cyan])"
+        )
+
+    return filtered
+
+
 def search_all_sources(config: Config, max_days: int | None = None) -> list[Job]:
     """Search all enabled sources and return deduplicated, filtered jobs."""
     all_jobs: list[Job] = []
@@ -148,5 +183,8 @@ def search_all_sources(config: Config, max_days: int | None = None) -> list[Job]
             console.print(
                 f"  Recency filter ({max_days}d): removed [yellow]{removed}[/yellow] jobs"
             )
+
+    # Apply title relevance filter
+    all_jobs = filter_by_title_relevance(all_jobs, config)
 
     return all_jobs

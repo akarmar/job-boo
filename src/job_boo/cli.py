@@ -40,51 +40,101 @@ def init() -> None:
     config: dict = {}
     console.print("\n[bold]Job Boo Setup[/bold]\n")
 
+    # --- Resume ---
+    console.print(
+        "[dim]Tip: Use the full path to your resume PDF (e.g., ~/Documents/resume.pdf)[/dim]"
+    )
     config["resume_path"] = click.prompt("Path to your resume PDF", type=str)
-    config["job_title"] = click.prompt(
-        "Target job title (e.g., Senior Software Engineer)"
+
+    # --- Job title ---
+    console.print(
+        "\n[dim]Tip: Use the exact title you'd search on LinkedIn/Indeed.\n"
+        "     Examples: 'Data Analyst', 'Senior Software Engineer', 'Product Manager'[/dim]"
+    )
+    config["job_title"] = click.prompt("Target job title")
+
+    # --- Keywords ---
+    console.print(
+        "\n[dim]Tip: Add related titles or specializations to broaden your search.\n"
+        "     Example: for 'Data Analyst' you might add 'Business Analyst, BI Analyst'[/dim]"
     )
     keywords = click.prompt(
         "Additional search keywords (comma-separated, or blank)", default=""
     )
     config["keywords"] = [k.strip() for k in keywords.split(",") if k.strip()]
 
+    # --- Location ---
     console.print("\n[bold]Location[/bold]")
+    console.print(
+        "[dim]Choose 'any' to see remote, hybrid, and onsite jobs.\n"
+        "Choose a specific preference to filter results.[/dim]"
+    )
     pref = click.prompt(
         "Preference",
-        type=click.Choice(["remote", "hybrid", "onsite"]),
-        default="remote",
+        type=click.Choice(["any", "remote", "hybrid", "onsite"]),
+        default="any",
     )
     city = ""
-    if pref != "remote":
-        city = click.prompt("City")
+    if pref in ("hybrid", "onsite", "any"):
+        console.print(
+            "[dim]Tip: Enter your city or cities (comma-separated).\n"
+            "     Example: 'Toledo, Phoenix' or 'San Francisco'.\n"
+            "     Leave blank to skip city filtering.[/dim]"
+        )
+        city = click.prompt("City (or blank for anywhere)", default="")
     config["location"] = {"preference": pref, "city": city}
 
+    # --- Sponsorship ---
+    console.print(
+        "\n[dim]Tip: If 'yes', jobs that explicitly say 'no sponsorship' will be flagged.[/dim]"
+    )
     config["needs_sponsorship"] = click.confirm(
         "Do you need visa sponsorship?", default=False
     )
 
+    # --- Salary ---
     console.print("\n[bold]Salary (USD, enter 0 to skip)[/bold]")
+    console.print(
+        "[dim]Tip: Only some sources support salary filtering. 0 = no filter.[/dim]"
+    )
     config["salary"] = {
         "min": click.prompt("Minimum salary", type=int, default=0),
         "max": click.prompt("Maximum salary", type=int, default=0),
         "currency": "USD",
     }
 
+    # --- Match threshold ---
+    console.print(
+        "\n[dim]Tip: 60 is a good default. Lower (e.g., 30) to see more jobs,\n"
+        "     higher (e.g., 80) for only strong matches.[/dim]"
+    )
     config["match_threshold"] = click.prompt(
         "Minimum match score (0-100)", type=int, default=60
     )
 
+    # --- AI Provider ---
     console.print("\n[bold]AI Provider[/bold]")
+    console.print(
+        "[dim]Tip: Claude (Anthropic) is recommended for best quality/cost.\n"
+        "     Get a key at: https://console.anthropic.com/settings/keys\n"
+        "     OpenAI key at: https://platform.openai.com/api-keys\n"
+        "     No key? Just press Enter — fallback mode uses keyword matching (free).[/dim]"
+    )
     provider = click.prompt(
         "Provider", type=click.Choice(["claude", "openai"]), default="claude"
     )
     api_key = click.prompt(
-        "API key (or set JOB_BOO_AI_KEY env var)", default="", hide_input=True
+        "API key (or set JOB_BOO_AI_KEY env var later)", default="", hide_input=True
     )
     config["ai"] = {"provider": provider, "api_key": api_key, "model": ""}
 
+    # --- Job Sources ---
     console.print("\n[bold]Job Sources[/bold]")
+    console.print(
+        "[dim]The Muse and Remotive are free and enabled by default.\n"
+        "Adzuna is free (1000 requests/month) — sign up at https://developer.adzuna.com\n"
+        "SerpAPI (Google Jobs) is paid ($50/mo) — sign up at https://serpapi.com[/dim]"
+    )
     config["sources"] = {
         "serpapi": {"enabled": False, "api_key": ""},
         "adzuna": {"enabled": False, "app_id": "", "api_key": "", "country": "us"},
@@ -125,7 +175,13 @@ def init() -> None:
         os.chmod(CONFIG_PATH, 0o600)
 
     console.print(f"\n[green]Config saved to {CONFIG_PATH}[/green]")
-    console.print("Run [bold]job-boo search[/bold] to find matching jobs.")
+    console.print(
+        "\n[bold]Next steps:[/bold]\n"
+        "  1. [cyan]job-boo doctor[/cyan]    — verify your setup\n"
+        "  2. [cyan]job-boo search[/cyan]    — find and score jobs\n"
+        "  3. [cyan]job-boo setup-ai[/cyan]  — configure AI key later\n"
+        "  4. [cyan]job-boo config[/cyan]    — change any single setting\n"
+    )
 
     from rich.panel import Panel
 
@@ -776,10 +832,12 @@ def search(
         for match in matches:
             db.update_score(match.job.dedup_key(), match)
 
-    # Filter by threshold
+    # Split into above/below threshold
     above = [m for m in matches if m.final_score >= config.match_threshold]
+    below = [m for m in matches if m.final_score < config.match_threshold]
 
     _display_results(above, config.match_threshold)
+    _display_rejection_summary(below, config.match_threshold)
 
 
 @main.command()
@@ -1679,6 +1737,76 @@ def _display_results(matches: list[MatchResult], threshold: int) -> None:
     console.print(table)
     console.print(
         "\n[dim]Run 'job-boo jobs' to see DB IDs, then 'job-boo show <id>' for details.[/dim]"
+    )
+
+
+def _display_rejection_summary(below: list[MatchResult], threshold: int) -> None:
+    """Show summary of jobs that didn't meet the threshold, with reasons and skill suggestions."""
+    if not below:
+        return
+
+    # Categorize rejections
+    keyword_filtered = [m for m in below if m.ai_score == 0]
+    ai_below = [m for m in below if m.ai_score > 0]
+
+    console.print(
+        f"\n[bold yellow]--- {len(below)} jobs below {threshold}% threshold ---[/bold yellow]"
+    )
+
+    if keyword_filtered:
+        console.print(
+            f"  [dim]{len(keyword_filtered)} failed keyword pre-filter (<20% skill match)[/dim]"
+        )
+    if ai_below:
+        console.print(
+            f"  [dim]{len(ai_below)} scored by AI but below {threshold}% threshold[/dim]"
+        )
+
+    # Show top 5 below-threshold jobs so user sees what was found
+    top_rejected = sorted(below, key=lambda m: m.final_score, reverse=True)[:5]
+    if top_rejected:
+        console.print("\n[bold]Top rejected jobs:[/bold]")
+        table = Table(show_header=True, header_style="dim")
+        table.add_column("Score", justify="right")
+        table.add_column("Company")
+        table.add_column("Title")
+        table.add_column("Reason")
+
+        for match in top_rejected:
+            reason = (
+                match.reasoning[:60] + "..."
+                if len(match.reasoning) > 60
+                else match.reasoning
+            )
+            table.add_row(
+                f"{match.final_score:.0f}%",
+                match.job.company[:25],
+                match.job.title[:40],
+                reason,
+            )
+        console.print(table)
+
+    # Aggregate missing skills across AI-scored rejections to suggest resume improvements
+    from collections import Counter
+
+    skill_gaps: Counter[str] = Counter()
+    for match in below:
+        for skill in match.missing_skills:
+            skill_gaps[skill.lower().strip()] += 1
+
+    if skill_gaps:
+        top_gaps = skill_gaps.most_common(8)
+        gap_list = ", ".join(f"[cyan]{s}[/cyan] ({n})" for s, n in top_gaps)
+        console.print(
+            f"\n[bold]Skills most requested by rejected jobs:[/bold] {gap_list}"
+        )
+        console.print(
+            "[dim]  Adding these to your resume may improve match rates.[/dim]"
+        )
+
+    console.print(
+        "\n[dim]View all jobs: [cyan]job-boo jobs --min-score 0[/cyan] | "
+        "Details: [cyan]job-boo show <id>[/cyan][/dim]\n"
     )
 
 

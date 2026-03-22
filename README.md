@@ -326,10 +326,15 @@ export JOB_BOO_AI_KEY="sk-ant-your-key-here"
 ## How Scoring Works
 
 ```text
-71 jobs found
+71 jobs found from all sources
     |
     v
-[Pass 1: Keyword overlap — FREE, instant]
+[Title relevance filter — removes jobs unrelated to your search query]
+    |
+    52 relevant jobs (titles match "Data Analyst", "Business Analyst", etc.)
+    |
+    v
+[Pass 1: Keyword overlap + title boost — FREE, instant]
     |
     34 candidates (>= 20% keyword match)
     |
@@ -342,7 +347,13 @@ export JOB_BOO_AI_KEY="sk-ant-your-key-here"
 Final score = (30% keyword) + (70% AI)
 ```
 
+**Title relevance filter:** Before scoring, jobs whose titles have zero overlap with your search query are removed. Searching for "Data Analyst" won't waste time scoring "VP Tax and Treasury" or "Backend Engineer".
+
+**Title boost:** Jobs with titles matching your search terms get a +15 point keyword bonus. Jobs with completely unrelated titles get a -10 penalty. This pushes relevant jobs above the threshold.
+
 **Why two passes?** The keyword filter eliminates ~50% of irrelevant jobs before spending AI tokens. A full search of 50 jobs costs about $0.50-1.50 in API costs.
+
+**Rejection visibility:** All jobs are tracked, including rejected ones. After search, you'll see a summary of why jobs were rejected (keyword filter, below threshold) and which skills were most requested by rejected jobs — helping you refine your resume.
 
 **Fallback mode:** Without an AI key, scoring uses keyword overlap only. Still useful — just less nuanced.
 

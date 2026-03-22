@@ -61,7 +61,9 @@ class TestSkillInText:
         # \bc\+\+\b won't match because + is non-word char at the boundary.
         # This is a known limitation of the word-boundary approach for short skills.
         # For longer skills (>3 chars), substring matching is used instead.
-        assert _skill_in_text("c++", "c++ developer needed") is False  # known limitation
+        assert (
+            _skill_in_text("c++", "c++ developer needed") is False
+        )  # known limitation
 
     def test_three_char_skill_uses_boundary(self) -> None:
         # Exactly 3 chars should use word boundary
@@ -110,8 +112,11 @@ class TestKeywordScore:
         resume = Resume(raw_text="", skills=["python", "aws"])
         job = Job(
             title="Python Developer",
-            company="Co", location="", description="python and aws required",
-            url="", source="test",
+            company="Co",
+            location="",
+            description="python and aws required",
+            url="",
+            source="test",
         )
         assert keyword_score(resume, job) == 100.0
 
@@ -119,16 +124,23 @@ class TestKeywordScore:
         resume = Resume(raw_text="", skills=["rust", "haskell"])
         job = Job(
             title="Python Developer",
-            company="Co", location="", description="python and java",
-            url="", source="test",
+            company="Co",
+            location="",
+            description="python and java",
+            url="",
+            source="test",
         )
         assert keyword_score(resume, job) == 0.0
 
     def test_empty_skills_returns_zero(self) -> None:
         resume = Resume(raw_text="", skills=[])
         job = Job(
-            title="Dev", company="Co", location="", description="anything",
-            url="", source="test",
+            title="Dev",
+            company="Co",
+            location="",
+            description="anything",
+            url="",
+            source="test",
         )
         assert keyword_score(resume, job) == 0
 
@@ -136,9 +148,11 @@ class TestKeywordScore:
         resume = Resume(raw_text="", skills=["python", "aws", "kubernetes", "java"])
         job = Job(
             title="Dev",
-            company="Co", location="",
+            company="Co",
+            location="",
             description="we need python and kubernetes experience",
-            url="", source="test",
+            url="",
+            source="test",
         )
         score = keyword_score(resume, job)
         assert score == 50.0  # 2 out of 4
@@ -147,9 +161,11 @@ class TestKeywordScore:
         resume = Resume(raw_text="", skills=["ci/cd"])
         job = Job(
             title="DevOps",
-            company="Co", location="",
+            company="Co",
+            location="",
             description="experience with ci cd pipelines",
-            url="", source="test",
+            url="",
+            source="test",
         )
         # ci/cd -> "ci cd" variant (replace / with nothing doesn't help; replace("-", " ") won't help either)
         # Actually the variants are: "ci/cd".replace(" ", "-") = "ci/cd", replace("-", " ") = "ci/cd", replace(".", "") = "ci/cd"
@@ -161,78 +177,148 @@ class TestKeywordScore:
         resume = Resume(raw_text="", skills=["python"])
         job = Job(
             title="Python Developer",
-            company="Co", location="", description="build things",
-            url="", source="test",
+            company="Co",
+            location="",
+            description="build things",
+            url="",
+            source="test",
         )
         assert keyword_score(resume, job) == 100.0
 
     def test_case_insensitive_matching(self) -> None:
         resume = Resume(raw_text="", skills=["Python", "AWS"])
         job = Job(
-            title="Dev", company="Co", location="",
+            title="Dev",
+            company="Co",
+            location="",
             description="python and aws needed",
-            url="", source="test",
+            url="",
+            source="test",
         )
         assert keyword_score(resume, job) == 100.0
 
     def test_whitespace_in_skills(self) -> None:
         resume = Resume(raw_text="", skills=["  python  ", " aws "])
         job = Job(
-            title="Dev", company="Co", location="",
+            title="Dev",
+            company="Co",
+            location="",
             description="python and aws",
-            url="", source="test",
+            url="",
+            source="test",
         )
         assert keyword_score(resume, job) == 100.0
 
 
 class TestIsCompanyBlacklisted:
     def test_blacklisted(self, config_with_blacklist: Config) -> None:
-        job = Job(title="E", company="Evil Corp", location="", description="", url="", source="test")
+        job = Job(
+            title="E",
+            company="Evil Corp",
+            location="",
+            description="",
+            url="",
+            source="test",
+        )
         assert is_company_blacklisted(job, config_with_blacklist) is True
 
     def test_not_blacklisted(self, config_with_blacklist: Config) -> None:
-        job = Job(title="E", company="Good Corp", location="", description="", url="", source="test")
+        job = Job(
+            title="E",
+            company="Good Corp",
+            location="",
+            description="",
+            url="",
+            source="test",
+        )
         assert is_company_blacklisted(job, config_with_blacklist) is False
 
     def test_case_insensitive(self, config_with_blacklist: Config) -> None:
-        job = Job(title="E", company="evil corp", location="", description="", url="", source="test")
+        job = Job(
+            title="E",
+            company="evil corp",
+            location="",
+            description="",
+            url="",
+            source="test",
+        )
         assert is_company_blacklisted(job, config_with_blacklist) is True
 
     def test_empty_blacklist(self) -> None:
         config = Config()
-        job = Job(title="E", company="Any", location="", description="", url="", source="test")
+        job = Job(
+            title="E", company="Any", location="", description="", url="", source="test"
+        )
         assert is_company_blacklisted(job, config) is False
 
 
 class TestCheckFilters:
     def test_remote_preference_with_remote_job(self) -> None:
         config = Config(location=LocationConfig(preference="remote"))
-        job = Job(title="E", company="C", location="Remote", description="", url="", source="test", remote=True)
+        job = Job(
+            title="E",
+            company="C",
+            location="Remote",
+            description="",
+            url="",
+            source="test",
+            remote=True,
+        )
         loc_fit, spon_fit = check_filters(job, config)
         assert loc_fit is True
 
     def test_remote_preference_with_onsite_job(self) -> None:
         config = Config(location=LocationConfig(preference="remote"))
-        job = Job(title="E", company="C", location="New York, NY", description="", url="", source="test", remote=False)
+        job = Job(
+            title="E",
+            company="C",
+            location="New York, NY",
+            description="",
+            url="",
+            source="test",
+            remote=False,
+        )
         loc_fit, spon_fit = check_filters(job, config)
         assert loc_fit is False
 
     def test_city_preference_match(self) -> None:
-        config = Config(location=LocationConfig(preference="onsite", city="San Francisco"))
-        job = Job(title="E", company="C", location="San Francisco, CA", description="", url="", source="test")
+        config = Config(
+            location=LocationConfig(preference="onsite", city="San Francisco")
+        )
+        job = Job(
+            title="E",
+            company="C",
+            location="San Francisco, CA",
+            description="",
+            url="",
+            source="test",
+        )
         loc_fit, _ = check_filters(job, config)
         assert loc_fit is True
 
     def test_city_preference_no_match(self) -> None:
-        config = Config(location=LocationConfig(preference="onsite", city="San Francisco"))
-        job = Job(title="E", company="C", location="New York, NY", description="", url="", source="test")
+        config = Config(
+            location=LocationConfig(preference="onsite", city="San Francisco")
+        )
+        job = Job(
+            title="E",
+            company="C",
+            location="New York, NY",
+            description="",
+            url="",
+            source="test",
+        )
         loc_fit, _ = check_filters(job, config)
         assert loc_fit is False
 
     def test_sponsorship_needed_and_not_available(self) -> None:
         config = Config(needs_sponsorship=True)
         job = Job(
-            title="E", company="C", location="", url="", source="test",
+            title="E",
+            company="C",
+            location="",
+            url="",
+            source="test",
             description="We are unable to sponsor visas.",
         )
         _, spon_fit = check_filters(job, config)
@@ -241,8 +327,13 @@ class TestCheckFilters:
     def test_sponsorship_needed_and_field_false(self) -> None:
         config = Config(needs_sponsorship=True)
         job = Job(
-            title="E", company="C", location="", description="Great job!",
-            url="", source="test", sponsorship_available=False,
+            title="E",
+            company="C",
+            location="",
+            description="Great job!",
+            url="",
+            source="test",
+            sponsorship_available=False,
         )
         _, spon_fit = check_filters(job, config)
         assert spon_fit is False
@@ -250,7 +341,11 @@ class TestCheckFilters:
     def test_sponsorship_not_needed_ignores(self) -> None:
         config = Config(needs_sponsorship=False)
         job = Job(
-            title="E", company="C", location="", url="", source="test",
+            title="E",
+            company="C",
+            location="",
+            url="",
+            source="test",
             description="Unable to sponsor visas.",
         )
         _, spon_fit = check_filters(job, config)
@@ -259,8 +354,13 @@ class TestCheckFilters:
     def test_sponsorship_unknown_benefit_of_doubt(self) -> None:
         config = Config(needs_sponsorship=True)
         job = Job(
-            title="E", company="C", location="", description="Great role!",
-            url="", source="test", sponsorship_available=None,
+            title="E",
+            company="C",
+            location="",
+            description="Great role!",
+            url="",
+            source="test",
+            sponsorship_available=None,
         )
         _, spon_fit = check_filters(job, config)
         assert spon_fit is True
@@ -274,24 +374,33 @@ class TestScoreJobs:
         results = score_jobs(resume, [], ai, config)
         assert results == []
 
-    def test_jobs_below_threshold_filtered(self) -> None:
+    def test_jobs_below_threshold_returned_with_reasoning(self) -> None:
         resume = Resume(raw_text="", skills=["rust"])
         ai = MagicMock()
         config = Config()
         jobs = [
             Job(
-                title="Python Developer", company="Co", location="",
-                description="python only", url="", source="test",
+                title="Python Developer",
+                company="Co",
+                location="",
+                description="python only",
+                url="",
+                source="test",
             ),
         ]
         results = score_jobs(resume, jobs, ai, config)
-        assert len(results) == 0
+        assert len(results) == 1
+        assert results[0].ai_score == 0
+        assert "Failed keyword filter" in results[0].reasoning
         ai.score_match.assert_not_called()
 
     def test_jobs_above_threshold_scored_by_ai(self) -> None:
         resume = Resume(raw_text="", skills=["python"])
         mock_match = MatchResult(
-            job=MagicMock(), keyword_score=0, ai_score=80, final_score=0,
+            job=MagicMock(),
+            keyword_score=0,
+            ai_score=80,
+            final_score=0,
             matched_skills=["python"],
         )
         ai = MagicMock()
@@ -299,9 +408,12 @@ class TestScoreJobs:
         config = Config()
         jobs = [
             Job(
-                title="Python Developer", company="Co", location="Remote",
+                title="Python Developer",
+                company="Co",
+                location="Remote",
                 description="python experience required",
-                url="", source="test",
+                url="",
+                source="test",
             ),
         ]
         results = score_jobs(resume, jobs, ai, config)
@@ -319,9 +431,12 @@ class TestScoreJobs:
         config = Config()
         jobs = [
             Job(
-                title="Python Dev", company="Co", location="",
+                title="Python Dev",
+                company="Co",
+                location="",
                 description="python experience required",
-                url="", source="test",
+                url="",
+                source="test",
             ),
         ]
         results = score_jobs(resume, jobs, ai, config)
@@ -335,7 +450,10 @@ class TestScoreJobs:
             # Return different AI scores based on company
             ai_score = 90 if "high" in job.company.lower() else 50
             return MatchResult(
-                job=job, keyword_score=0, ai_score=ai_score, final_score=0,
+                job=job,
+                keyword_score=0,
+                ai_score=ai_score,
+                final_score=0,
             )
 
         ai = MagicMock()
@@ -343,14 +461,20 @@ class TestScoreJobs:
 
         jobs = [
             Job(
-                title="Dev", company="Low Score Co", location="",
+                title="Dev",
+                company="Low Score Co",
+                location="",
                 description="python aws docker",
-                url="", source="test",
+                url="",
+                source="test",
             ),
             Job(
-                title="Dev", company="High Score Co", location="",
+                title="Dev",
+                company="High Score Co",
+                location="",
                 description="python aws docker",
-                url="", source="test",
+                url="",
+                source="test",
             ),
         ]
         results = score_jobs(resume, jobs, ai, config)
