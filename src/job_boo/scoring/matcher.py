@@ -196,7 +196,9 @@ def score_jobs(
 
     if not candidates:
         console.print(
-            "[yellow]  No jobs passed the keyword filter. Try broader search terms.[/yellow]"
+            "[yellow]  No jobs passed the keyword filter.[/yellow]\n"
+            "  [dim]This means fewer than 20% of your resume skills appeared in any job description.\n"
+            "  Try: change your job title, add more keywords, or add in-demand skills to your resume.[/dim]"
         )
         # Still return the filtered jobs so they can be saved to DB
         filtered_out.sort(key=lambda m: m.final_score, reverse=True)

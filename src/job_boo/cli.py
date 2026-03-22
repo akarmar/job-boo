@@ -15,6 +15,7 @@ from rich.table import Table
 from job_boo.config import (
     CONFIG_DIR,
     CONFIG_PATH,
+    Config,
     load_config,
     ensure_dirs,
     apply_profile,
@@ -838,6 +839,7 @@ def search(
 
     _display_results(above, config.match_threshold)
     _display_rejection_summary(below, config.match_threshold)
+    _display_search_next_steps(above, below, config)
 
 
 @main.command()
@@ -880,6 +882,13 @@ def tailor(job_id: int, profile: str | None) -> None:
             tailored_resume_path=resume_path,
             cover_letter_path=cover_path,
         )
+
+    console.print(
+        f"\n[bold]Next steps:[/bold]\n"
+        f"  [cyan]job-boo prep {job_id}[/cyan]   — generate interview prep questions\n"
+        f"  [cyan]job-boo apply {job_id}[/cyan]  — open application with tailored materials\n"
+        f"  [cyan]job-boo show {job_id}[/cyan]   — review score breakdown and details\n"
+    )
 
 
 @main.command()
@@ -934,7 +943,11 @@ def apply(job_id: int | None, min_score: float | None, no_confirm: bool) -> None
                 )
             if not rows:
                 console.print(
-                    "[yellow]No jobs ready to apply. Run 'job-boo search' first.[/yellow]"
+                    "[yellow]No jobs ready to apply.[/yellow]\n"
+                    "\n[bold]Try:[/bold]\n"
+                    "  [cyan]job-boo search[/cyan]         — find and score new jobs\n"
+                    "  [cyan]job-boo tailor <id>[/cyan]    — tailor resume for a job first\n"
+                    "  [cyan]job-boo jobs[/cyan]           — see available jobs and their states\n"
                 )
                 return
             matches = [db.row_to_match(r) for r in rows]
@@ -1084,7 +1097,12 @@ def jobs(state: str | None, min_score: float, limit: int) -> None:
         rows = db.get_jobs(state=job_state, min_score=min_score, limit=limit)
 
     if not rows:
-        console.print("[yellow]No jobs found. Run 'job-boo search' first.[/yellow]")
+        console.print(
+            "[yellow]No jobs found.[/yellow]\n"
+            "\n[bold]Get started:[/bold]\n"
+            "  [cyan]job-boo search[/cyan]    — search and score jobs against your resume\n"
+            "  [cyan]job-boo doctor[/cyan]    — check your configuration is correct\n"
+        )
         return
 
     table = Table(title="Tracked Jobs")
@@ -1808,6 +1826,81 @@ def _display_rejection_summary(below: list[MatchResult], threshold: int) -> None
         "\n[dim]View all jobs: [cyan]job-boo jobs --min-score 0[/cyan] | "
         "Details: [cyan]job-boo show <id>[/cyan][/dim]\n"
     )
+
+
+def _display_search_next_steps(
+    above: list[MatchResult],
+    below: list[MatchResult],
+    config: Config,
+) -> None:
+    """Show contextual next steps after a search, based on results quality."""
+    total = len(above) + len(below)
+
+    if not above and not below:
+        return  # no-jobs-found guidance is already shown earlier
+
+    console.print("[bold]What's next?[/bold]")
+
+    if above:
+        # Good results — guide through the pipeline
+        console.print(
+            "  [cyan]job-boo jobs[/cyan]            — see all jobs with DB IDs\n"
+            "  [cyan]job-boo show <id>[/cyan]       — view full details and score breakdown\n"
+            "  [cyan]job-boo tailor <id>[/cyan]     — AI-tailor your resume for a specific job\n"
+            "  [cyan]job-boo apply <id>[/cyan]      — open application with tailored materials\n"
+            "  [cyan]job-boo all[/cyan]             — run the full pipeline (tailor + apply top matches)"
+        )
+    else:
+        # No good results — focus on improving the search
+        console.print(
+            "  [cyan]job-boo jobs --min-score 0[/cyan]  — see all scored jobs, even low matches"
+        )
+
+    # Always show refinement options
+    console.print("\n[bold]Refine your search:[/bold]")
+
+    if total > 0 and not above:
+        console.print(
+            f"  [cyan]job-boo search --threshold {max(config.match_threshold - 20, 20)}[/cyan]"
+            "  — lower the bar to see more results"
+        )
+
+    console.print(
+        f'  [cyan]job-boo config job_title "{config.job_title}"[/cyan]'
+        "  — change your target job title"
+    )
+    console.print(
+        '  [cyan]job-boo config keywords "term1, term2"[/cyan]'
+        "  — add or change search keywords"
+    )
+
+    # Source-specific suggestions
+    enabled_sources = []
+    if config.sources.themuse:
+        enabled_sources.append("The Muse")
+    if config.sources.remotive:
+        enabled_sources.append("Remotive")
+    if config.sources.adzuna.enabled:
+        enabled_sources.append("Adzuna")
+    if config.sources.serpapi.enabled:
+        enabled_sources.append("SerpAPI")
+
+    disabled_suggestions = []
+    if not config.sources.adzuna.enabled:
+        disabled_suggestions.append("Adzuna (free, 1000 req/month)")
+    if not config.sources.serpapi.enabled:
+        disabled_suggestions.append("SerpAPI (Google Jobs, paid)")
+
+    if disabled_suggestions:
+        console.print(
+            "  [cyan]job-boo config[/cyan]"
+            f"                 — enable more sources: {', '.join(disabled_suggestions)}"
+        )
+
+    console.print(
+        "  [cyan]job-boo search --days 7[/cyan]     — filter to recent postings only"
+    )
+    console.print()
 
 
 if __name__ == "__main__":
