@@ -40,6 +40,8 @@ Job Boo automates the painful parts of job hunting:
 - **HTML Dashboard** — Interactive charts (Chart.js) with score distribution, company breakdown, skill gaps
 - **Application history** — Search history by company or date range
 - **Auto-cleanup** — Remove stale found/scored jobs older than 90 days
+- **Resume caching** — Parsed resumes are cached by content hash; re-runs cost zero AI credits
+- **Quick config updates** — Change any setting with `job-boo config key value`
 
 ### Smart Filters
 
@@ -119,6 +121,16 @@ pip install -e .
 job-boo init          # Interactive setup wizard
 job-boo setup-ai      # Configure + test AI provider
 job-boo doctor        # Verify everything works
+
+# Update a single setting without re-running init
+job-boo config job_title "Data Engineer"
+job-boo config ai.provider openai
+job-boo config match_threshold 70
+job-boo config keywords "python, sql, spark"
+
+# Pre-parse resumes to save AI credits on future runs
+job-boo parse-resume                    # Parse resume from config
+job-boo parse-resume ~/resumes/*.pdf    # Parse all your resume variants
 ```
 
 ### Use
@@ -377,7 +389,9 @@ job-boo setup-ai
 | Command               | Description                                         |
 | --------------------- | --------------------------------------------------- |
 | `job-boo init`        | Interactive configuration wizard                    |
+| `job-boo config`      | View or update a single config setting              |
 | `job-boo setup-ai`    | Configure and test AI provider                      |
+| `job-boo parse-resume` | Pre-parse and cache resumes to save AI credits     |
 | `job-boo doctor`      | Diagnose configuration issues                       |
 | `job-boo search`      | Search and score jobs against your resume           |
 | `job-boo show ID`     | View full job details, scores, and AI reasoning     |

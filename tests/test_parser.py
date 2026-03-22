@@ -10,7 +10,13 @@ import click
 import pytest
 
 from job_boo.models import Resume
-from job_boo.resume.parser import extract_text_from_pdf, parse_resume
+from job_boo.resume.parser import (
+    _load_cached_resume,
+    _resume_cache_path,
+    _save_resume_cache,
+    extract_text_from_pdf,
+    parse_resume,
+)
 
 
 class TestExtractTextFromPdf:
@@ -119,3 +125,117 @@ class TestParseResume:
         resume = parse_resume("/tmp/resume.pdf", ai)
         assert isinstance(resume, Resume)
         assert resume.source_path == "/tmp/resume.pdf"
+
+
+class TestResumeCache:
+    def test_cache_path_deterministic(self, tmp_path: Path) -> None:
+        """Same file content produces same cache path."""
+        pdf = tmp_path / "resume.pdf"
+        pdf.write_bytes(b"fake pdf content")
+        path1 = _resume_cache_path(str(pdf))
+        path2 = _resume_cache_path(str(pdf))
+        assert path1 == path2
+
+    def test_cache_path_changes_with_content(self, tmp_path: Path) -> None:
+        """Different file content produces different cache path."""
+        pdf = tmp_path / "resume.pdf"
+        pdf.write_bytes(b"version 1")
+        path1 = _resume_cache_path(str(pdf))
+        pdf.write_bytes(b"version 2")
+        path2 = _resume_cache_path(str(pdf))
+        assert path1 != path2
+
+    def test_load_cached_resume_missing_file(self, tmp_path: Path) -> None:
+        """Returns None when cache file doesn't exist."""
+        result = _load_cached_resume(tmp_path / "nonexistent.json")
+        assert result is None
+
+    def test_load_cached_resume_invalid_json(self, tmp_path: Path) -> None:
+        """Returns None when cache file contains invalid JSON."""
+        bad_cache = tmp_path / "bad.json"
+        bad_cache.write_text("not json")
+        result = _load_cached_resume(bad_cache)
+        assert result is None
+
+    def test_load_cached_resume_missing_key(self, tmp_path: Path) -> None:
+        """Returns None when cache file is missing required keys."""
+        bad_cache = tmp_path / "incomplete.json"
+        bad_cache.write_text(json.dumps({"skills": ["Python"]}))
+        result = _load_cached_resume(bad_cache)
+        assert result is None
+
+    def test_save_and_load_roundtrip(self, tmp_path: Path) -> None:
+        """Saving then loading a resume produces equivalent data."""
+        resume = Resume(
+            raw_text="John Doe\nPython developer",
+            skills=["Python", "AWS"],
+            experience_years=10,
+            job_titles=["Senior Developer"],
+            education=["BS Computer Science"],
+            summary="Experienced developer",
+            source_path="/home/user/resume.pdf",
+        )
+        cache_path = tmp_path / "cache" / "resume_abc123.json"
+        with patch("job_boo.resume.parser.CACHE_DIR", tmp_path / "cache"):
+            _save_resume_cache(cache_path, resume)
+
+        loaded = _load_cached_resume(cache_path)
+        assert loaded is not None
+        assert loaded.skills == ["Python", "AWS"]
+        assert loaded.experience_years == 10
+        assert loaded.job_titles == ["Senior Developer"]
+        assert loaded.education == ["BS Computer Science"]
+        assert loaded.summary == "Experienced developer"
+        assert loaded.source_path == "/home/user/resume.pdf"
+        assert loaded.raw_text == "John Doe\nPython developer"
+
+    @patch("job_boo.resume.parser.extract_text_from_pdf")
+    def test_parse_resume_uses_cache(self, mock_extract: MagicMock, tmp_path: Path) -> None:
+        """parse_resume returns cached resume without calling AI."""
+        pdf = tmp_path / "resume.pdf"
+        pdf.write_bytes(b"fake pdf bytes")
+
+        cached_resume = Resume(
+            raw_text="cached text",
+            skills=["Python"],
+            experience_years=5,
+            source_path=str(pdf),
+        )
+        cache_path = _resume_cache_path(str(pdf))
+
+        with patch("job_boo.resume.parser.CACHE_DIR", tmp_path / "cache"):
+            cache_dir = tmp_path / "cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            # Compute the real cache path using the tmp cache dir
+            import hashlib
+
+            content_hash = hashlib.md5(pdf.read_bytes()).hexdigest()[:12]
+            real_cache_path = cache_dir / f"resume_{content_hash}.json"
+            _save_resume_cache(real_cache_path, cached_resume)
+
+            ai = MagicMock()
+            resume = parse_resume(str(pdf), ai)
+
+        # AI should NOT have been called
+        ai.extract_skills.assert_not_called()
+        # extract_text_from_pdf should NOT have been called
+        mock_extract.assert_not_called()
+        assert resume.skills == ["Python"]
+
+    @patch("job_boo.resume.parser.extract_text_from_pdf")
+    def test_parse_resume_no_cache_flag(self, mock_extract: MagicMock, tmp_path: Path) -> None:
+        """parse_resume with use_cache=False skips cache."""
+        pdf = tmp_path / "resume.pdf"
+        pdf.write_bytes(b"fake pdf bytes")
+
+        mock_extract.return_value = "Fresh text from PDF"
+        ai = MagicMock()
+        ai.extract_skills.return_value = Resume(
+            raw_text="",
+            skills=["Docker"],
+            experience_years=3,
+        )
+
+        resume = parse_resume(str(pdf), ai, use_cache=False)
+        ai.extract_skills.assert_called_once()
+        assert resume.skills == ["Docker"]

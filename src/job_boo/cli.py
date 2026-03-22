@@ -149,6 +149,149 @@ def init() -> None:
     )
 
 
+@main.command(name="config")
+@click.argument("key", required=False, default=None)
+@click.argument("value", required=False, default=None)
+def config_cmd(key: str | None, value: str | None) -> None:
+    """View or update a single config setting.
+
+    Examples:
+        job-boo config                    # Show current config
+        job-boo config job_title          # Show one setting
+        job-boo config job_title "Data Engineer"  # Update one setting
+        job-boo config ai.provider openai # Update nested setting
+        job-boo config match_threshold 70 # Update threshold
+    """
+    if not CONFIG_PATH.exists():
+        console.print("[red]No config found. Run 'job-boo init' first.[/red]")
+        return
+
+    with open(CONFIG_PATH) as f:
+        data = yaml.safe_load(f) or {}
+
+    # No args: pretty-print entire config
+    if key is None:
+        console.print(yaml.dump(data, default_flow_style=False, sort_keys=False))
+        return
+
+    # Resolve dot-notation key (e.g. "ai.provider" -> data["ai"]["provider"])
+    parts = key.split(".")
+
+    # Key only: show current value
+    if value is None:
+        current = data
+        for part in parts:
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                console.print(f"[yellow]Key '{key}' not found in config.[/yellow]")
+                return
+        if isinstance(current, dict):
+            console.print(yaml.dump(current, default_flow_style=False, sort_keys=False))
+        else:
+            console.print(f"[bold]{key}[/bold] = {current}")
+        return
+
+    # Key + value: update the setting
+    # Navigate to the parent dict, creating intermediate dicts as needed
+    current = data
+    for part in parts[:-1]:
+        if part not in current or not isinstance(current[part], dict):
+            current[part] = {}
+        current = current[part]
+
+    leaf = parts[-1]
+    old_value = current.get(leaf, "(unset)")
+
+    # Determine the existing type for smart conversion
+    existing = current.get(leaf)
+
+    # Convert value to appropriate type
+    converted: str | int | bool | list[str]
+    if value.lower() in ("true", "false"):
+        converted = value.lower() == "true"
+    elif value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+        converted = int(value)
+    elif isinstance(existing, list) and "," in value:
+        converted = [v.strip() for v in value.split(",") if v.strip()]
+    elif isinstance(existing, list):
+        converted = [v.strip() for v in value.split(",") if v.strip()]
+    else:
+        converted = value
+
+    current[leaf] = converted
+
+    with open(CONFIG_PATH, "w") as f:
+        yaml.dump(data, default_flow_style=False, sort_keys=False)
+    if sys.platform != "win32":
+        os.chmod(CONFIG_PATH, 0o600)
+
+    console.print(f"[bold]{key}[/bold]: {old_value} -> [green]{converted}[/green]")
+
+
+@main.command(name="parse-resume")
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--no-cache", is_flag=True, help="Force re-parse even if cached")
+def parse_resume_cmd(paths: tuple[str, ...], no_cache: bool) -> None:
+    """Pre-parse and cache one or more resume PDFs to save AI credits.
+
+    Examples:
+        job-boo parse-resume                         # Parse resume from config
+        job-boo parse-resume ~/resumes/backend.pdf   # Parse a specific resume
+        job-boo parse-resume ~/resumes/*.pdf         # Parse all resumes at once
+        job-boo parse-resume --no-cache resume.pdf   # Force re-parse
+    """
+    config = load_config()
+    ensure_dirs(config)
+
+    from job_boo.ai import get_provider
+    from job_boo.resume.parser import parse_resume
+
+    ai = get_provider(config.ai)
+
+    # If no paths given, use the config resume + all profile resumes
+    resume_paths: list[str] = []
+    if not paths:
+        if config.resume_path:
+            resume_paths.append(str(config.resume_path))
+        # Also parse all profile resumes
+        if hasattr(config, "profiles") and config.profiles:
+            for name, profile in config.profiles.items():
+                if hasattr(profile, "resume_path") and profile.resume_path:
+                    resume_paths.append(str(profile.resume_path))
+    else:
+        resume_paths = list(paths)
+
+    if not resume_paths:
+        console.print(
+            "[red]No resume paths found. Provide paths or set resume_path in config.[/red]"
+        )
+        return
+
+    console.print(f"\n[bold]Parsing {len(resume_paths)} resume(s)...[/bold]\n")
+
+    for path in resume_paths:
+        try:
+            resume = parse_resume(path, ai, use_cache=not no_cache)
+            cached_label = (
+                "[dim](from cache)[/dim]" if not no_cache else "[dim](fresh)[/dim]"
+            )
+            console.print(
+                f"  [green]{path}[/green] {cached_label}\n"
+                f"    Skills: {', '.join(resume.skills[:10])}"
+                f"{'...' if len(resume.skills) > 10 else ''}\n"
+                f"    Experience: {resume.experience_years} years\n"
+                f"    Titles: {', '.join(resume.job_titles[:5]) if resume.job_titles else 'N/A'}"
+            )
+        except (FileNotFoundError, ValueError) as e:
+            console.print(f"  [red]{path}[/red]: {e}")
+
+    console.print(
+        "\n[dim]Cached resumes are reused automatically. "
+        "Change a PDF and the cache auto-invalidates.[/dim]"
+    )
+
+
 @main.command(name="setup-ai")
 def setup_ai() -> None:
     """Configure and validate AI provider (Claude or OpenAI)."""
@@ -600,7 +743,19 @@ def search(
         jobs = search_all_sources(config, max_days=days)
 
     if not jobs:
-        console.print("[red]No jobs found. Check your config and API keys.[/red]")
+        console.print("\n[yellow]No jobs found.[/yellow]")
+        console.print("\n[bold]Things to try:[/bold]")
+        console.print(
+            "  1. Check your job title: [cyan]job-boo config job_title[/cyan]"
+        )
+        console.print("  2. Broaden your search: try a more general title")
+        console.print("  3. Enable more sources: [cyan]job-boo config[/cyan] to review")
+        console.print("  4. Check source connectivity: [cyan]job-boo doctor[/cyan]")
+        if days:
+            console.print(
+                f"  5. Widen date range: you're filtering to last {days} days"
+            )
+        console.print()
         return
 
     # Show cost estimate before AI scoring
@@ -774,7 +929,19 @@ def run_all(
     jobs = search_all_sources(config, max_days=days)
 
     if not jobs:
-        console.print("[red]No jobs found.[/red]")
+        console.print("\n[yellow]No jobs found.[/yellow]")
+        console.print("\n[bold]Things to try:[/bold]")
+        console.print(
+            "  1. Check your job title: [cyan]job-boo config job_title[/cyan]"
+        )
+        console.print("  2. Broaden your search: try a more general title")
+        console.print("  3. Enable more sources: [cyan]job-boo config[/cyan] to review")
+        console.print("  4. Check source connectivity: [cyan]job-boo doctor[/cyan]")
+        if days:
+            console.print(
+                f"  5. Widen date range: you're filtering to last {days} days"
+            )
+        console.print()
         return
 
     # Step 3: Score
@@ -1463,6 +1630,13 @@ def _display_results(matches: list[MatchResult], threshold: int) -> None:
     """Display scored results in a rich table."""
     if not matches:
         console.print(f"\n[yellow]No jobs scored above {threshold}%.[/yellow]")
+        console.print("\n[bold]Things to try:[/bold]")
+        console.print(
+            f"  1. Lower the threshold: [cyan]job-boo search --threshold {max(threshold - 20, 20)}[/cyan]"
+        )
+        console.print("  2. Update your resume with more relevant keywords")
+        console.print("  3. Check scored jobs: [cyan]job-boo jobs --min-score 0[/cyan]")
+        console.print()
         return
 
     console.print(
@@ -1495,14 +1669,17 @@ def _display_results(matches: list[MatchResult], threshold: int) -> None:
         table.add_row(
             str(i),
             f"[{score_color}]{match.final_score:.0f}%[/{score_color}]",
-            match.job.company[:25],
-            match.job.title[:35],
-            match.job.location[:20],
-            ", ".join(match.matched_skills[:4]),
+            match.job.company[:30],
+            match.job.title[:45],
+            match.job.location[:25],
+            ", ".join(match.matched_skills[:5]),
             " ".join(flags) if flags else "[green]OK[/green]",
         )
 
     console.print(table)
+    console.print(
+        "\n[dim]Run 'job-boo jobs' to see DB IDs, then 'job-boo show <id>' for details.[/dim]"
+    )
 
 
 if __name__ == "__main__":
