@@ -70,12 +70,35 @@ class JobSpyConfig:
 
 
 @dataclass
+class JSearchConfig:
+    enabled: bool = False
+    api_key: str = ""
+
+    def resolve_key(self) -> str:
+        return self.api_key or os.environ.get("JSEARCH_API_KEY", "")
+
+
+@dataclass
+class USAJobsConfig:
+    enabled: bool = False
+    api_key: str = ""
+    email: str = ""
+
+    def resolve_key(self) -> str:
+        return self.api_key or os.environ.get("USAJOBS_API_KEY", "")
+
+
+@dataclass
 class SourcesConfig:
     serpapi: SerpApiConfig = field(default_factory=SerpApiConfig)
     adzuna: AdzunaConfig = field(default_factory=AdzunaConfig)
     jobspy: JobSpyConfig = field(default_factory=JobSpyConfig)
+    jsearch: JSearchConfig = field(default_factory=JSearchConfig)
+    usajobs: USAJobsConfig = field(default_factory=USAJobsConfig)
     themuse: bool = True
     remotive: bool = True
+    himalayas: bool = True
+    jobicy: bool = True
 
 
 @dataclass
@@ -137,6 +160,8 @@ def load_config(path: Path | None = None) -> Config:
     serpapi_data = sources_data.get("serpapi", {})
     adzuna_data = sources_data.get("adzuna", {})
     jobspy_data = sources_data.get("jobspy", {})
+    jsearch_data = sources_data.get("jsearch", {})
+    usajobs_data = sources_data.get("usajobs", {})
     loc_data = data.get("location", {})
     salary_data = data.get("salary", {})
     ai_data = data.get("ai", {})
@@ -181,12 +206,27 @@ def load_config(path: Path | None = None) -> Config:
                 proxy=jobspy_data.get("proxy", ""),
                 results_per_site=jobspy_data.get("results_per_site", 25),
             ),
+            jsearch=JSearchConfig(
+                enabled=jsearch_data.get("enabled", False),
+                api_key=jsearch_data.get("api_key", ""),
+            ),
+            usajobs=USAJobsConfig(
+                enabled=usajobs_data.get("enabled", False),
+                api_key=usajobs_data.get("api_key", ""),
+                email=usajobs_data.get("email", ""),
+            ),
             themuse=sources_data.get("themuse", {}).get("enabled", True)
             if isinstance(sources_data.get("themuse"), dict)
             else sources_data.get("themuse", True),
             remotive=sources_data.get("remotive", {}).get("enabled", True)
             if isinstance(sources_data.get("remotive"), dict)
             else sources_data.get("remotive", True),
+            himalayas=sources_data.get("himalayas", {}).get("enabled", True)
+            if isinstance(sources_data.get("himalayas"), dict)
+            else sources_data.get("himalayas", True),
+            jobicy=sources_data.get("jobicy", {}).get("enabled", True)
+            if isinstance(sources_data.get("jobicy"), dict)
+            else sources_data.get("jobicy", True),
         ),
         output_dir=data.get("output_dir", str(OUTPUT_DIR)),
         apply=ApplyConfig(

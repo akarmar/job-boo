@@ -132,30 +132,60 @@ def init() -> None:
     # --- Job Sources ---
     console.print("\n[bold]Job Sources[/bold]")
     console.print(
-        "[dim]The Muse and Remotive are free and enabled by default.\n"
-        "Adzuna is free (1000 requests/month) — sign up at https://developer.adzuna.com\n"
-        "SerpAPI (Google Jobs) is paid ($50/mo) — sign up at https://serpapi.com[/dim]"
+        "[dim]Free sources enabled by default (no API key needed):\n"
+        "  The Muse, Remotive, Himalayas, Jobicy\n"
+        "Free sources needing a key:\n"
+        "  JSearch (RapidAPI) — best results, aggregates Google Jobs\n"
+        "  USAJobs — federal government jobs\n"
+        "  Adzuna — 1000 req/month free\n"
+        "Paid sources:\n"
+        "  SerpAPI (Google Jobs) — $50/mo[/dim]"
     )
     config["sources"] = {
         "serpapi": {"enabled": False, "api_key": ""},
         "adzuna": {"enabled": False, "app_id": "", "api_key": "", "country": "us"},
+        "jsearch": {"enabled": False, "api_key": ""},
+        "usajobs": {"enabled": False, "api_key": "", "email": ""},
         "themuse": {"enabled": True},
         "remotive": {"enabled": True},
+        "himalayas": {"enabled": True},
+        "jobicy": {"enabled": True},
     }
 
-    if click.confirm("Enable SerpAPI (Google Jobs, paid)?", default=False):
-        config["sources"]["serpapi"]["enabled"] = True
-        config["sources"]["serpapi"]["api_key"] = click.prompt(
-            "SerpAPI key", default=""
+    if click.confirm(
+        "Enable JSearch (best free source, needs RapidAPI key)?", default=True
+    ):
+        console.print(
+            "[dim]  Sign up free at https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch[/dim]"
         )
+        jsearch_key = click.prompt("RapidAPI key (or blank to skip)", default="")
+        if jsearch_key:
+            config["sources"]["jsearch"]["enabled"] = True
+            config["sources"]["jsearch"]["api_key"] = jsearch_key
 
-    if click.confirm("Enable Adzuna (free tier, 1000 req/month)?", default=True):
+    if click.confirm("Enable USAJobs (federal government, free)?", default=False):
+        console.print("[dim]  Register free at https://developer.usajobs.gov[/dim]")
+        usajobs_key = click.prompt("USAJobs API key", default="")
+        usajobs_email = click.prompt("Email (used as User-Agent)", default="")
+        if usajobs_key:
+            config["sources"]["usajobs"]["enabled"] = True
+            config["sources"]["usajobs"]["api_key"] = usajobs_key
+            config["sources"]["usajobs"]["email"] = usajobs_email
+
+    if click.confirm("Enable Adzuna (free tier, 1000 req/month)?", default=False):
+        console.print("[dim]  Sign up at https://developer.adzuna.com[/dim]")
         config["sources"]["adzuna"]["enabled"] = True
         config["sources"]["adzuna"]["app_id"] = click.prompt(
             "Adzuna App ID", default=""
         )
         config["sources"]["adzuna"]["api_key"] = click.prompt(
             "Adzuna API key", default=""
+        )
+
+    if click.confirm("Enable SerpAPI (Google Jobs, paid $50/mo)?", default=False):
+        config["sources"]["serpapi"]["enabled"] = True
+        config["sources"]["serpapi"]["api_key"] = click.prompt(
+            "SerpAPI key", default=""
         )
 
     config["output_dir"] = str(CONFIG_DIR / "output")

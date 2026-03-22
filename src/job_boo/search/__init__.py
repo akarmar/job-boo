@@ -10,11 +10,15 @@ from rich.console import Console
 from job_boo.config import Config
 from job_boo.models import Job
 from job_boo.search.adzuna import search_adzuna
+from job_boo.search.himalayas import search_himalayas
+from job_boo.search.jobicy import search_jobicy
 from job_boo.search.jobspy_source import search_jobspy
+from job_boo.search.jsearch import search_jsearch
 from job_boo.search.remotive import search_remotive
 from job_boo.search.serpapi import search_serpapi
 from job_boo.search.themuse import search_themuse
 from job_boo.search.url import parse_job_url  # noqa: F401 — re-exported for CLI
+from job_boo.search.usajobs import search_usajobs
 
 console = Console()
 
@@ -145,10 +149,18 @@ def search_all_sources(config: Config, max_days: int | None = None) -> list[Job]
     if config.sources.jobspy.enabled:
         sites_label = ", ".join(config.sources.jobspy.sites)
         sources.append((f"JobSpy ({sites_label})", lambda: search_jobspy(config)))
+    if config.sources.jsearch.enabled and config.sources.jsearch.resolve_key():
+        sources.append(("JSearch (Google Jobs)", lambda: search_jsearch(config)))
+    if config.sources.usajobs.enabled and config.sources.usajobs.resolve_key():
+        sources.append(("USAJobs (Federal)", lambda: search_usajobs(config)))
     if config.sources.themuse:
         sources.append(("The Muse", lambda: search_themuse(config)))
     if config.sources.remotive:
         sources.append(("Remotive", lambda: search_remotive(config)))
+    if config.sources.himalayas:
+        sources.append(("Himalayas", lambda: search_himalayas(config)))
+    if config.sources.jobicy:
+        sources.append(("Jobicy", lambda: search_jobicy(config)))
 
     if not sources:
         console.print(
