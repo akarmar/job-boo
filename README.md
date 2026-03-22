@@ -165,6 +165,37 @@ pip install -e .
 job-boo --version  # Verify installation
 ```
 
+### Windows (WSL2)
+
+Native Windows is not supported — use WSL2 (Windows Subsystem for Linux):
+
+```powershell
+# Step 1: Install WSL2 (run PowerShell as Administrator)
+wsl --install
+
+# Step 2: Restart your PC, then open "Ubuntu" from the Start menu
+
+# Step 3: Inside the Ubuntu terminal, install Python
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
+
+# Step 4: Clone and install job-boo
+git clone https://github.com/akarmar/job-boo.git
+cd job-boo
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+# Step 5: Verify
+job-boo --version
+```
+
+**Common Windows issues:**
+- **`python3: command not found`** — Run `sudo apt install python3` inside WSL
+- **`pip install` fails with SSL errors** — Run `sudo apt install ca-certificates` first
+- **Can't find your resume PDF** — Windows files are at `/mnt/c/Users/YourName/Documents/` inside WSL
+- **`webbrowser.open` doesn't work** — Install `wslu`: `sudo apt install wslu` (enables `wslview` for opening URLs)
+- **Permission denied on `~/.job-boo/`** — WSL home directory is separate from Windows home; use `~/` (e.g., `~/Documents/resume.pdf`)
+
 ### Docker (no Python required)
 ```bash
 git clone https://github.com/akarmar/job-boo.git
@@ -231,6 +262,43 @@ All API keys can be set via env vars instead of config:
 | `ADZUNA_APP_ID`  | Adzuna application ID    |
 | `ADZUNA_API_KEY` | Adzuna API key           |
 | `SERPAPI_KEY`    | SerpAPI key (optional)   |
+
+### Getting Your AI API Key
+
+Job Boo works without an AI key (fallback mode), but AI scoring and tailoring require one. Here's how to get a key:
+
+#### Claude (Anthropic) — Recommended
+1. Go to [console.anthropic.com](https://console.anthropic.com/)
+2. Sign up or log in
+3. Navigate to **Settings** → **API Keys** (or go directly to [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys))
+4. Click **Create Key**, give it a name (e.g., "job-boo")
+5. Copy the key — it starts with `sk-ant-...`
+6. **Billing**: Add a payment method at **Settings** → **Billing**. New accounts get $5 free credit. A typical job search costs $0.50-$1.50.
+
+#### OpenAI (GPT-4o) — Alternative
+1. Go to [platform.openai.com](https://platform.openai.com/)
+2. Sign up or log in
+3. Navigate to **API Keys** at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+4. Click **Create new secret key**
+5. Copy the key — it starts with `sk-...`
+6. **Billing**: Add a payment method at **Settings** → **Billing**. Pay-as-you-go, ~$0.003/job for scoring.
+
+#### Configure the key
+```bash
+# Option 1: Interactive wizard (recommended)
+job-boo setup-ai
+
+# Option 2: Environment variable (more secure — key stays out of config file)
+export JOB_BOO_AI_KEY="sk-ant-your-key-here"
+
+# Option 3: Config file (less secure — key stored in plaintext)
+# Edit ~/.job-boo/config.yaml:
+#   ai:
+#     provider: claude
+#     api_key: "sk-ant-your-key-here"
+```
+
+**Security tip:** Use the environment variable method. Add `export JOB_BOO_AI_KEY="..."` to your `~/.bashrc` or `~/.zshrc` so it persists across sessions without being stored in the config file.
 
 ## Job Sources
 
