@@ -48,7 +48,7 @@ def extract_text_from_pdf(pdf_path: str | Path) -> str:
 def _resume_cache_path(pdf_path: str | Path) -> Path:
     """Get cache file path based on PDF content hash."""
     path = Path(pdf_path).expanduser()
-    content_hash = hashlib.md5(path.read_bytes()).hexdigest()[:12]
+    content_hash = hashlib.md5(path.read_bytes(), usedforsecurity=False).hexdigest()[:12]
     return CACHE_DIR / f"resume_{content_hash}.json"
 
 
